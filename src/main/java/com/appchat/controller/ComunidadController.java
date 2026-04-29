@@ -52,7 +52,7 @@ public class ComunidadController {
     }
     
     @GET
-    @Path("/miembros")
+    @Path("/{id}/miembros")
     public Response listarMimebros(@PathParam("id") Long comunidadId){
         List<UsuarioResponseDTO> miembros = comunidadService.listarMiembros(comunidadId);
         return Response.ok(miembros).build();
