@@ -1,6 +1,7 @@
 package com.appchat.controller;
 
 import com.appchat.dto.ComunidadDTO;
+import com.appchat.dto.ComunidadDetalleDTO;
 import com.appchat.dto.InvitacionDTO;
 import com.appchat.dto.UsuarioResponseDTO;
 import com.appchat.model.Comunidad;
@@ -19,6 +20,8 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import java.util.List;
 import com.appchat.dto.ComunidadResumenDTO;
+import jakarta.ws.rs.DELETE;
+import jakarta.ws.rs.PUT;
 
 @Path("/comunidades")
 @Produces(MediaType.APPLICATION_JSON) 
@@ -50,6 +53,29 @@ public class ComunidadController {
         comunidadService.invitarUsuario(comunidadId, invitacion.getUsername(), ownerId);
         
         return Response.ok("Invitacion Enviada").build();
+    }
+    
+   @GET
+@Path("/{id}")
+public Response obtenerComunidad(@PathParam("id") Long id) {
+    ComunidadDetalleDTO dto = comunidadService.obtenerDetalleComunidad(id);
+    return Response.ok(dto).build();
+}
+
+    @PUT
+    @Path("/{id}")
+    public Response editarComunidad(@PathParam("id") Long id, @Valid ComunidadDTO dto) {
+        Long userId = (Long) requestContext.getProperty("userId");
+        Comunidad c = comunidadService.editarComunidad(id, dto, userId);
+        return Response.ok(c).build();
+    }
+
+    @DELETE
+    @Path("/{id}")
+    public Response eliminarComunidad(@PathParam("id") Long id) {
+        Long userId = (Long) requestContext.getProperty("userId");
+        comunidadService.eliminarComunidad(id, userId);
+        return Response.noContent().build();
     }
     
     @GET

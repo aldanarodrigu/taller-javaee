@@ -18,7 +18,16 @@ public class ComunidadRepository {
     public Comunidad buscarPorId(Long comunidadId) {
         return em.find(Comunidad.class, comunidadId);
     }
-
+    
+    public Comunidad actualizar(Comunidad comunidad) {
+    return em.merge(comunidad);
+    }
+    
+    public void eliminar(Long id) {
+    Comunidad c = em.find(Comunidad.class, id);
+    if (c != null) em.remove(c);
+    }
+    
     public boolean sonMiembros(Long comunidadId, Long u1, Long u2) {
 
         Long count = em.createQuery("""

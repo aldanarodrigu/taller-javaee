@@ -7,6 +7,9 @@ import com.appchat.model.Usuario;
 import com.appchat.model.enums.RolComunidad;
 import com.appchat.repository.ComunidadRepository;
 import com.appchat.dto.ComunidadResumenDTO;
+import com.appchat.dto.ComunidadDetalleDTO;
+
+
 
 import jakarta.inject.Inject;
 
@@ -35,6 +38,49 @@ public class ComunidadService {
     boolean sonMiembros(Long comunidadId, Long usuarioAutenticadoId, Long usuarioDestinoId) {
         return comunidadRepository.sonMiembros(comunidadId, usuarioAutenticadoId, usuarioDestinoId);
     }
+
+    @Transactional
+    public ComunidadDetalleDTO obtenerDetalleComunidad(Long id) {
+    Comunidad c = comunidadRepository.buscarPorId(id);
+    if (c == null) throw new NotFoundException("Comunidad no encontrada");
+
+    Long ownerUserId = c.getMiembros().stream()
+        .filter(m -> m.getRol() == RolComunidad.OWNER)
+        .map(m -> m.getUsuario().getId())
+        .findFirst().orElse(null);
+
+    List<UsuarioResponseDTO> miembros = c.getMiembros().stream()
+        .map(m -> usuarioService.mapearUsuario(m.getUsuario()))
+        .collect(java.util.stream.Collectors.toList());
+
+    ComunidadDetalleDTO dto = new ComunidadDetalleDTO();
+    dto.setId(c.getId());
+    dto.setNombre(c.getNombre());
+    dto.setDescripcion(c.getDescripcion());
+    dto.setFotoUrl(c.getFotoUrl());
+    dto.setOwnerUserId(ownerUserId);
+    dto.setMiembros(miembros);
+    return dto;
+}
+
+    @Transactional
+public Comunidad editarComunidad(Long id, ComunidadDTO dto, Long userId) {
+    Comunidad c = comunidadRepository.buscarPorId(id);
+    if (c == null) throw new NotFoundException("Comunidad no encontrada");
+    if (!c.esAdmin(userId)) throw new ForbiddenException("No autorizado");
+    c.setNombre(dto.getNombre());
+    c.setDescripcion(dto.getDescripcion());
+    if (dto.getFotoUrl() != null) c.setFotoUrl(dto.getFotoUrl());
+    return comunidadRepository.actualizar(c);
+}
+
+@Transactional
+public void eliminarComunidad(Long id, Long userId) {
+    Comunidad c = comunidadRepository.buscarPorId(id);
+    if (c == null) throw new NotFoundException("Comunidad no encontrada");
+    if (!c.esAdmin(userId)) throw new ForbiddenException("No autorizado");
+    comunidadRepository.eliminar(id);
+}
 
     @Transactional
     public Comunidad crearComunidad(ComunidadDTO comunidadDto, Long userId) {
