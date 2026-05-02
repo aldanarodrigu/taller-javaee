@@ -43,6 +43,7 @@ public class ComunidadService {
         comunidadNueva.setNombre(comunidadDto.getNombre());
         comunidadNueva.setDescripcion(comunidadDto.getDescripcion());
         comunidadNueva.setFotoUrl(comunidadDto.getFotoUrl());
+        comunidadNueva.setFechaCreacion(java.time.LocalDateTime.now());
         
         Usuario creador = usuarioService.obtenerPorId(userId);
         comunidadNueva.agregarMiembro(creador, RolComunidad.OWNER);

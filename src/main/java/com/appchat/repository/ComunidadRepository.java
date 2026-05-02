@@ -49,4 +49,13 @@ public class ComunidadRepository {
         return usuarios;
     }
     
+    public List<Comunidad> listarPorUsuario(Long userId) {
+    return em.createQuery(
+        "SELECT c FROM MiembroComunidad mc JOIN mc.comunidad c WHERE mc.usuario.id = :userId",
+        Comunidad.class
+    )
+    .setParameter("userId", userId)
+    .getResultList();
+}
+    
 }

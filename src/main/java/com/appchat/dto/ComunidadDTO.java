@@ -11,12 +11,8 @@ public class ComunidadDTO {
     @NotBlank
     private String descripcion;
     
-    @NotBlank
     private String fotoUrl;
     
-    @NotBlank
-    private LocalDateTime fechaCreacion;  
-
     public String getNombre() {
         return nombre;
     }
