@@ -13,6 +13,8 @@ public class ComunidadDTO {
     
     private String fotoUrl;
     
+    private LocalDateTime fechaCreacion; //setearla con LocalDateTime.now()?
+
     public String getNombre() {
         return nombre;
     }

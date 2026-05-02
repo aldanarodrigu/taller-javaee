@@ -89,5 +89,8 @@ public class Comunidad {
     public List<MiembroComunidad> getMiembros() { 
         return miembros; 
     }
-    
+
+ public void setFechaCreacion(LocalDateTime fechaCreacion) {
+    this.fechaCreacion = fechaCreacion;
+}
 }
