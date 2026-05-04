@@ -7,6 +7,7 @@ import com.appchat.service.ChatService;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
 import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.DELETE;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
@@ -44,6 +45,16 @@ public class ChatGrupoController {
         ChatResumenDTO chat = service.agregarMiembrosAGrupo(chatId, usuarioId, request);
 
         return Response.ok(chat).build();
+    }
+
+    @DELETE
+    @Path("/{id}/miembros/{userId}")
+    public Response eliminarMiembro(@PathParam("id") Long chatId, @PathParam("userId") Long userId) {
+        Long usuarioId = getUsuarioId();
+
+        service.eliminarMiembroDeGrupo(chatId, usuarioId, userId);
+
+        return Response.noContent().build();
     }
 
     private Long getUsuarioId() {

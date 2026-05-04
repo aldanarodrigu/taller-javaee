@@ -280,6 +280,33 @@ public class ChatService {
         return mapearResumen(chat, usuarioSolicitanteId);
     }
 
+    @Transactional
+    public void eliminarMiembroDeGrupo(Long chatId, Long usuarioSolicitanteId, Long usuarioObjetivoId) {
+        Chat chat = chatRepository.buscarChatPorId(chatId);
+        if (chat == null) {
+            throw new NotFoundException("Chat no existe.");
+        }
+
+        if (chat.getTipo() != TipoChat.GRUPAL) {
+            throw new BadRequestException("Solo se pueden eliminar miembros de un grupo");
+        }
+
+        if (!chat.esParticipante(usuarioSolicitanteId)) {
+            throw new ForbiddenException("Debe ser participante del grupo");
+        }
+
+        if (!chat.esParticipante(usuarioObjetivoId)) {
+            throw new NotFoundException("Usuario no es miembro del grupo");
+        }
+
+        if (!usuarioSolicitanteId.equals(usuarioObjetivoId)) {
+            validarAdminGrupo(chat, usuarioSolicitanteId);
+        }
+
+        chat.removerParticipante(usuarioObjetivoId);
+        chatRepository.flush();
+    }
+
     public Usuario resolverUsuarioAutenticado(String principal) {
 
         if (principal == null || principal.isBlank()) {
