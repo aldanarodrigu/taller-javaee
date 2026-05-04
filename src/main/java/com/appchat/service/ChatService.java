@@ -1,5 +1,7 @@
 package com.appchat.service;
 
+import com.appchat.dto.ChatGrupoRequestDTO;
+import com.appchat.dto.ChatMiembrosRequestDTO;
 import com.appchat.dto.ChatResumenDTO;
 import com.appchat.dto.HistorialMensajesDTO;
 import com.appchat.dto.MensajeDTO;
@@ -9,6 +11,7 @@ import com.appchat.model.Comunidad;
 import com.appchat.model.Mensaje;
 import com.appchat.model.Usuario;
 import com.appchat.model.enums.EstadoMensaje;
+import com.appchat.model.enums.RolGrupo;
 import com.appchat.model.enums.TipoChat;
 import com.appchat.model.enums.TipoMensaje;
 import com.appchat.repository.ChatRepository;
@@ -20,6 +23,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 import jakarta.ws.rs.BadRequestException;
+import jakarta.ws.rs.ClientErrorException;
 import jakarta.ws.rs.ForbiddenException;
 import jakarta.ws.rs.NotAuthorizedException;
 import jakarta.ws.rs.NotFoundException;
@@ -27,7 +31,9 @@ import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.Response;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 @ApplicationScoped
 @Transactional(Transactional.TxType.REQUIRED)
@@ -194,6 +200,86 @@ public class ChatService {
         return mapearResumen(chatNuevo, usuarioAutenticadoId);
     }
 
+    @Transactional
+    public ChatResumenDTO crearGrupo(Long usuarioAutenticadoId, ChatGrupoRequestDTO request) {
+        if (request == null) {
+            throw new BadRequestException("Datos requeridos");
+        }
+
+        Usuario creador = verificarUsuarioExiste(usuarioAutenticadoId);
+
+        Comunidad comunidad = comunidadService.buscarPorId(request.getComunidadId());
+        if (comunidad == null) {
+            throw new NotFoundException("Comunidad no existe");
+        }
+
+        Chat chatNuevo = new Chat();
+        chatNuevo.setTipo(TipoChat.GRUPAL);
+        chatNuevo.setNombre(request.getNombre());
+        chatNuevo.setDescripcion(request.getDescripcion());
+        chatNuevo.setFotoUrl(request.getFotoUrl());
+        chatNuevo.setComunidad(comunidad);
+
+        chatNuevo.agregarParticipante(creador, RolGrupo.ADMIN);
+
+        Set<Long> idsIniciales = normalizarIds(request.getUsuarioIds());
+        idsIniciales.remove(usuarioAutenticadoId);
+
+        for (Long usuarioId : idsIniciales) {
+            Usuario usuario = verificarUsuarioExiste(usuarioId);
+
+            chatNuevo.agregarParticipante(usuario, RolGrupo.MIEMBRO);
+        }
+
+        chatRepository.guardarChat(chatNuevo);
+        chatRepository.flush();
+
+        return mapearResumen(chatNuevo, usuarioAutenticadoId);
+    }
+
+    @Transactional
+    public ChatResumenDTO agregarMiembrosAGrupo(Long chatId, Long usuarioSolicitanteId, ChatMiembrosRequestDTO request) {
+        if (request == null) {
+            throw new BadRequestException("Datos requeridos");
+        }
+
+        Chat chat = chatRepository.buscarChatPorId(chatId);
+        if (chat == null) {
+            throw new NotFoundException("Chat no existe.");
+        }
+
+        if (chat.getTipo() != TipoChat.GRUPAL) {
+            throw new BadRequestException("Solo se pueden agregar miembros a un grupo");
+        }
+
+        validarAdminGrupo(chat, usuarioSolicitanteId);
+
+        Set<Long> idsNuevos = normalizarIds(request.getUsuarioIds());
+        if (idsNuevos.isEmpty()) {
+            throw new BadRequestException("usuarioIds requerido");
+        }
+
+        Comunidad comunidad = chat.getComunidad();
+
+        for (Long usuarioId : idsNuevos) {
+            if (usuarioId.equals(usuarioSolicitanteId)) {
+                continue;
+            }
+
+            if (chat.esParticipante(usuarioId)) {
+                throw new ClientErrorException("Usuario ya es miembro", Response.Status.CONFLICT);
+            }
+
+            Usuario usuario = verificarUsuarioExiste(usuarioId);
+
+            chat.agregarParticipante(usuario, RolGrupo.MIEMBRO);
+        }
+
+        chatRepository.flush();
+
+        return mapearResumen(chat, usuarioSolicitanteId);
+    }
+
     public Usuario resolverUsuarioAutenticado(String principal) {
 
         if (principal == null || principal.isBlank()) {
@@ -230,6 +316,32 @@ public class ChatService {
         if (!chat.esParticipante(usuarioId)) {
             throw new ForbiddenException("Debe ser participante de la comunidad.");
         }
+    }
+
+    private void validarAdminGrupo(Chat chat, Long usuarioId) {
+        boolean esAdmin = chat.getListaParticipaciones().stream()
+                .anyMatch(participacion -> participacion.getUsuario().getId().equals(usuarioId)
+                        && participacion.getRol() == RolGrupo.ADMIN);
+
+        if (!esAdmin) {
+            throw new ForbiddenException("Solo un admin de grupo puede realizar esta acción");
+        }
+    }
+
+    private Set<Long> normalizarIds(List<Long> usuarioIds) {
+        Set<Long> ids = new LinkedHashSet<>();
+
+        if (usuarioIds == null) {
+            return ids;
+        }
+
+        for (Long usuarioId : usuarioIds) {
+            if (usuarioId != null) {
+                ids.add(usuarioId);
+            }
+        }
+
+        return ids;
     }
 
     private ChatResumenDTO mapearResumen(Chat chat, Long usuarioId) {
