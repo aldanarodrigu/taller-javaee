@@ -57,5 +57,14 @@ public class ComunidadController {
         List<UsuarioResponseDTO> miembros = comunidadService.listarMiembros(comunidadId);
         return Response.ok(miembros).build();
     }
+
+    @GET
+    public Response listarComunidades() {
+        Long userId = (Long) requestContext.getProperty("userId");
+
+        List<ComunidadDTO> comunidades = comunidadService.listarComunidadesDelUsuario(userId);
+
+        return Response.ok(comunidades).build();
+    }
     
 }

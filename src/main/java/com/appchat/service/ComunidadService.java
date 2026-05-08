@@ -88,5 +88,18 @@ public class ComunidadService {
         
         return miembrosComunidad;
     }
+
+    public List<ComunidadDTO> listarComunidadesDelUsuario(Long userId) {
+
+        List<Comunidad> comunidades = comunidadRepository.buscarComunidadesDelUsuario(userId);
+
+        List<ComunidadDTO> comunidadesDTO = new ArrayList<>();
+
+        for (Comunidad c : comunidades) {
+            comunidadesDTO.add(mapearComunidad(c));
+        }
+
+        return comunidadesDTO;
+    }
     
 }
