@@ -3,7 +3,6 @@
   <persistence-unit name="appchatPU" transaction-type="JTA">
     <provider>org.eclipse.persistence.jpa.PersistenceProvider</provider>
     <jta-data-source>jdbc/appchatDS</jta-data-source>
-
     <class>com.appchat.model.Usuario</class>
     <class>com.appchat.model.Chat</class>
     <class>com.appchat.model.Participa</class>
@@ -11,9 +10,7 @@
     <class>com.appchat.model.Comunidad</class>
     <class>com.appchat.model.MiembroComunidad</class>
     <class>com.appchat.model.InvitacionComunidad</class>
-
-    <exclude-unlisted-classes>true</exclude-unlisted-classes>
-    
+    <exclude-unlisted-classes>false</exclude-unlisted-classes>
     <properties>
       <property name="hibernate.show_sql" value="true"/>
       <property name="hibernate.format_sql" value="true"/>
@@ -21,6 +18,5 @@
       <property name="eclipselink.logging.level" value="FINE"/>
       <property name="jakarta.persistence.schema-generation.database.action" value="drop-and-create"/>
     </properties>
-  
   </persistence-unit>
 </persistence>
