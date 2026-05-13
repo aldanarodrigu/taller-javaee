@@ -106,37 +106,39 @@ public void eliminarComunidad(Long id, Long userId) {
     public void invitarUsuario(Long comunidadId, String username, Long ownerId) {
         
         Comunidad comunidad = comunidadRepository.buscarPorId(comunidadId);
-        
+
         if(comunidad == null){
             throw new NotFoundException("Comunidad no existe");
         }
-        
+
         if(!comunidad.esAdmin(ownerId)){
             throw new ForbiddenException("No Autorizado");
         }
-        
+
         Usuario u = usuarioService.buscarPorUsername(username);
-        
+
         if(u == null){
             throw new NotFoundException("Usuario no existe.");
         }
-        
+
         if(comunidad.esMiembro(u.getId())){
             throw new ClientErrorException("Ya es miembro", Response.Status.CONFLICT);
         }
-        
+
         boolean yaInvitado = inivtacionRepository.existeInvitacionPendiente(comunidadId, u.getId());
-        
+
         if(yaInvitado){
             throw new ClientErrorException("Ya tiene una invitacion pendiente", Response.Status.CONFLICT);
         }
-                 
+
+        Usuario owner = usuarioService.obtenerPorId(ownerId);
+
         InvitacionComunidad invitacion = new InvitacionComunidad();
-        invitacion.setComunidadId(comunidadId);
-        invitacion.setOwnerId(ownerId);
+        invitacion.setComunidad(comunidad); 
+        invitacion.setOwner(owner);       
+        invitacion.setUsuarioInvitado(u);  
         invitacion.setEstado(EstadoInvitacion.PENDIENTE);
-        invitacion.setUsuarioInvitadoId(u.getId());
-        
+
         inivtacionRepository.guardar(invitacion);
     }
     
@@ -156,15 +158,17 @@ public void eliminarComunidad(Long id, Long userId) {
         return miembrosComunidad;
     }
     
-   public List<ComunidadResumenDTO> listarComunidadesDelUsuario(Long userId) {
-    List<Comunidad> comunidades = comunidadRepository.listarPorUsuario(userId);
-    List<ComunidadResumenDTO> resultado = new ArrayList<>();
-    for (Comunidad c : comunidades) {
-        resultado.add(new ComunidadResumenDTO(
-            c.getId(), c.getNombre(), c.getDescripcion(), c.getFotoUrl()
-        ));
+    public List<ComunidadResumenDTO> listarComunidadesDelUsuario(Long userId) {
+        List<Comunidad> comunidades = comunidadRepository.listarPorUsuario(userId);
+        List<ComunidadResumenDTO> resultado = new ArrayList<>();
+        
+        for (Comunidad c : comunidades) {
+            resultado.add(new ComunidadResumenDTO(
+                c.getId(), c.getNombre(), c.getDescripcion(), c.getFotoUrl()
+            ));
+        }
+        
+        return resultado;
     }
-    return resultado;
-}
     
 }

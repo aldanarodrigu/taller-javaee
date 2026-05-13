@@ -21,56 +21,31 @@ public class InvitacionComunidad {
 
     @ManyToOne
     @JoinColumn(name = "comunidad_id")
-    private Long comunidadId;
-    
+    private Comunidad comunidad;
+
     @ManyToOne
     @JoinColumn(name = "usuario_invitado_id")
-    private Long usuarioInvitadoId;
-    
+    private Usuario usuarioInvitado;
+
     @ManyToOne
     @JoinColumn(name = "owner_id")
-    private Long ownerId;
+    private Usuario owner;
 
     @Enumerated(EnumType.STRING)
     private EstadoInvitacion estado;
 
-    public Long getId() {
-        return id;
-    }
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
 
-    public void setId(Long id) {
-        this.id = id;
-    }
+    public Comunidad getComunidad() { return comunidad; }
+    public void setComunidad(Comunidad comunidad) { this.comunidad = comunidad; }
 
-    public Long getComunidadId() {
-        return comunidadId;
-    }
+    public Usuario getUsuarioInvitado() { return usuarioInvitado; }
+    public void setUsuarioInvitado(Usuario usuarioInvitado) { this.usuarioInvitado = usuarioInvitado; }
 
-    public void setComunidadId(Long comunidadId) {
-        this.comunidadId = comunidadId;
-    }
+    public Usuario getOwner() { return owner; }
+    public void setOwner(Usuario owner) { this.owner = owner; }
 
-    public Long getUsuarioInvitadoId() {
-        return usuarioInvitadoId;
-    }
-
-    public void setUsuarioInvitadoId(Long usuarioInvitadoId) {
-        this.usuarioInvitadoId = usuarioInvitadoId;
-    }
-
-    public Long getOwnerId() {
-        return ownerId;
-    }
-
-    public void setOwnerId(Long ownerId) {
-        this.ownerId = ownerId;
-    }
-
-    public EstadoInvitacion getEstado() {
-        return estado;
-    }
-
-    public void setEstado(EstadoInvitacion estado) {
-        this.estado = estado;
-    }  
+    public EstadoInvitacion getEstado() { return estado; }
+    public void setEstado(EstadoInvitacion estado) { this.estado = estado; }
 }
