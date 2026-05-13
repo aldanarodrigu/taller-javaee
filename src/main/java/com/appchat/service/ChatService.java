@@ -18,6 +18,8 @@ import com.appchat.repository.ChatRepository;
 import com.appchat.repository.UsuarioRepository;
 import com.appchat.websocket.ChatHub;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -51,7 +53,9 @@ public class ChatService {
     @Inject
     private ComunidadService comunidadService;
     
-    private static final ObjectMapper mapper = new ObjectMapper();
+    private static final ObjectMapper mapper = new ObjectMapper()
+            .registerModule(new JavaTimeModule())
+            .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
 
     @Transactional
     public MensajeDTO enviarMensaje(Long chatId, Long emisorId, String contenido) {
@@ -414,6 +418,7 @@ public class ChatService {
         return dto;
     }
 
+    @Transactional
     public void procesarMensajeWebSocket(Long userId, String message) {
 
     if (message == null || message.isBlank()) {
