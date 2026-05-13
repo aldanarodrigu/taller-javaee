@@ -103,6 +103,7 @@ public void eliminarComunidad(Long id, Long userId) {
         return comunidadNueva;
     }
 
+    @Transactional
     public void invitarUsuario(Long comunidadId, String username, Long ownerId) {
         
         Comunidad comunidad = comunidadRepository.buscarPorId(comunidadId);

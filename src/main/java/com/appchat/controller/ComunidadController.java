@@ -56,11 +56,11 @@ public class ComunidadController {
     }
     
    @GET
-@Path("/{id}")
-public Response obtenerComunidad(@PathParam("id") Long id) {
-    ComunidadDetalleDTO dto = comunidadService.obtenerDetalleComunidad(id);
-    return Response.ok(dto).build();
-}
+    @Path("/{id}")
+    public Response obtenerComunidad(@PathParam("id") Long id) {
+        ComunidadDetalleDTO dto = comunidadService.obtenerDetalleComunidad(id);
+        return Response.ok(dto).build();
+    }
 
     @PUT
     @Path("/{id}")
