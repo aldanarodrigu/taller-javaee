@@ -1,13 +1,16 @@
 package com.appchat.controller;
 
+import com.appchat.dto.ChatGrupoActualizacionDTO;
 import com.appchat.dto.ChatGrupoRequestDTO;
 import com.appchat.dto.ChatMiembrosRequestDTO;
+import com.appchat.dto.ChatRolGrupoRequestDTO;
 import com.appchat.dto.ChatResumenDTO;
 import com.appchat.service.ChatService;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DELETE;
+import jakarta.ws.rs.PUT;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
@@ -43,6 +46,26 @@ public class ChatGrupoController {
         Long usuarioId = getUsuarioId();
 
         ChatResumenDTO chat = service.agregarMiembrosAGrupo(chatId, usuarioId, request);
+
+        return Response.ok(chat).build();
+    }
+
+    @PUT
+    @Path("/{id}")
+    public Response editarGrupo(@PathParam("id") Long chatId, @Valid ChatGrupoActualizacionDTO request) {
+        Long usuarioId = getUsuarioId();
+
+        ChatResumenDTO chat = service.editarGrupo(chatId, usuarioId, request);
+
+        return Response.ok(chat).build();
+    }
+
+    @PUT
+    @Path("/{id}/roles")
+    public Response cambiarRolMiembro(@PathParam("id") Long chatId, @Valid ChatRolGrupoRequestDTO request) {
+        Long usuarioId = getUsuarioId();
+
+        ChatResumenDTO chat = service.cambiarRolMiembroAGrupo(chatId, usuarioId, request);
 
         return Response.ok(chat).build();
     }
