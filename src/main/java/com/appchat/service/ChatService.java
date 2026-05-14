@@ -1,7 +1,9 @@
 package com.appchat.service;
 
+import com.appchat.dto.ChatGrupoActualizacionDTO;
 import com.appchat.dto.ChatGrupoRequestDTO;
 import com.appchat.dto.ChatMiembrosRequestDTO;
+import com.appchat.dto.ChatRolGrupoRequestDTO;
 import com.appchat.dto.ChatResumenDTO;
 import com.appchat.dto.HistorialMensajesDTO;
 import com.appchat.dto.MensajeDTO;
@@ -9,6 +11,7 @@ import com.appchat.dto.MensajeWSDTO;
 import com.appchat.model.Chat;
 import com.appchat.model.Comunidad;
 import com.appchat.model.Mensaje;
+import com.appchat.model.Participa;
 import com.appchat.model.Usuario;
 import com.appchat.model.enums.EstadoMensaje;
 import com.appchat.model.enums.RolGrupo;
@@ -243,6 +246,97 @@ public class ChatService {
     }
 
     @Transactional
+    public ChatResumenDTO editarGrupo(Long chatId, Long usuarioSolicitanteId, ChatGrupoActualizacionDTO request) {
+        if (request == null) {
+            throw new BadRequestException("Datos requeridos");
+        }
+
+        Chat chat = chatRepository.buscarChatPorId(chatId);
+        if (chat == null) {
+            throw new NotFoundException("Chat no existe.");
+        }
+
+        if (chat.getTipo() != TipoChat.GRUPAL) {
+            throw new BadRequestException("Solo se pueden editar grupos");
+        }
+
+        validarAdminGrupo(chat, usuarioSolicitanteId);
+
+        boolean actualizado = false;
+
+        if (request.getNombre() != null) {
+            String nombre = request.getNombre().trim();
+            if (nombre.isEmpty()) {
+                throw new BadRequestException("nombre no puede estar vacío");
+            }
+            chat.setNombre(nombre);
+            actualizado = true;
+        }
+
+        if (request.getDescripcion() != null) {
+            chat.setDescripcion(request.getDescripcion().trim());
+            actualizado = true;
+        }
+
+        if (request.getFotoUrl() != null) {
+            chat.setFotoUrl(request.getFotoUrl().trim());
+            actualizado = true;
+        }
+
+        if (!actualizado) {
+            throw new BadRequestException("Debe enviar al menos un campo para actualizar");
+        }
+
+        chatRepository.flush();
+
+        return mapearResumen(chat, usuarioSolicitanteId);
+    }
+
+    @Transactional
+    public ChatResumenDTO cambiarRolMiembroAGrupo(Long chatId, Long usuarioSolicitanteId, ChatRolGrupoRequestDTO request) {
+        if (request == null) {
+            throw new BadRequestException("Datos requeridos");
+        }
+
+        Chat chat = chatRepository.buscarChatPorId(chatId);
+        if (chat == null) {
+            throw new NotFoundException("Chat no existe.");
+        }
+
+        if (chat.getTipo() != TipoChat.GRUPAL) {
+            throw new BadRequestException("Solo se pueden cambiar roles en grupos");
+        }
+
+        validarAdminGrupo(chat, usuarioSolicitanteId);
+
+        Long usuarioObjetivoId = request.getUsuarioId();
+        RolGrupo nuevoRol = request.getRol();
+
+        Participa participacion = chat.getListaParticipaciones().stream()
+                .filter(p -> p.getUsuario().getId().equals(usuarioObjetivoId))
+                .findFirst()
+                .orElse(null);
+
+        if (participacion == null) {
+            throw new NotFoundException("Usuario no es miembro del grupo");
+        }
+
+        if (participacion.getRol() == nuevoRol) {
+            return mapearResumen(chat, usuarioSolicitanteId);
+        }
+
+        if (participacion.getRol() == RolGrupo.ADMIN && nuevoRol == RolGrupo.MIEMBRO && esUnicoAdmin(chat, participacion.getUsuario().getId())) {
+            throw new BadRequestException("El ultimo admin no puede perder su rol");
+        }
+
+        participacion.setRol(nuevoRol);
+
+        chatRepository.flush();
+
+        return mapearResumen(chat, usuarioSolicitanteId);
+    }
+
+    @Transactional
     public ChatResumenDTO agregarMiembrosAGrupo(Long chatId, Long usuarioSolicitanteId, ChatMiembrosRequestDTO request) {
         if (request == null) {
             throw new BadRequestException("Datos requeridos");
@@ -283,6 +377,33 @@ public class ChatService {
         chatRepository.flush();
 
         return mapearResumen(chat, usuarioSolicitanteId);
+    }
+
+    @Transactional
+    public void eliminarMiembroDeGrupo(Long chatId, Long usuarioSolicitanteId, Long usuarioObjetivoId) {
+        Chat chat = chatRepository.buscarChatPorId(chatId);
+        if (chat == null) {
+            throw new NotFoundException("Chat no existe.");
+        }
+
+        if (chat.getTipo() != TipoChat.GRUPAL) {
+            throw new BadRequestException("Solo se pueden eliminar miembros de un grupo");
+        }
+
+        if (!chat.esParticipante(usuarioSolicitanteId)) {
+            throw new ForbiddenException("Debe ser participante del grupo");
+        }
+
+        if (!chat.esParticipante(usuarioObjetivoId)) {
+            throw new NotFoundException("Usuario no es miembro del grupo");
+        }
+
+        if (!usuarioSolicitanteId.equals(usuarioObjetivoId)) {
+            validarAdminGrupo(chat, usuarioSolicitanteId);
+        }
+
+        chat.removerParticipante(usuarioObjetivoId);
+        chatRepository.flush();
     }
 
     public Usuario resolverUsuarioAutenticado(String principal) {
@@ -331,6 +452,20 @@ public class ChatService {
         if (!esAdmin) {
             throw new ForbiddenException("Solo un admin de grupo puede realizar esta acción");
         }
+    }
+
+    private boolean esUnicoAdmin(Chat chat, Long usuarioId) {
+        long admins = chat.getListaParticipaciones().stream()
+                .filter(participacion -> participacion.getRol() == RolGrupo.ADMIN)
+                .count();
+
+        if (admins > 1) {
+            return false;
+        }
+
+        return chat.getListaParticipaciones().stream()
+                .anyMatch(participacion -> participacion.getUsuario().getId().equals(usuarioId)
+                        && participacion.getRol() == RolGrupo.ADMIN);
     }
 
     private Set<Long> normalizarIds(List<Long> usuarioIds) {

@@ -130,6 +130,10 @@ public class Chat {
         participantes.add(p);
     }
 
+    public boolean removerParticipante(Long usuarioId) {
+        return participantes.removeIf(participacion -> participacion.getUsuario().getId().equals(usuarioId));
+    }
+
     public boolean esParticipante(Long usuarioId) {
         return participantes.stream()
                 .anyMatch(p -> p.getUsuario().getId().equals(usuarioId));
