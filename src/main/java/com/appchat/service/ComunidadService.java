@@ -247,11 +247,16 @@ public class ComunidadService {
         inv.setEstado(EstadoInvitacion.ACEPTADA);
         invitacionRepository.actualizar(inv);
 
-        MiembroComunidad miembro = new MiembroComunidad();
-        miembro.setComunidad(inv.getComunidad());
-        miembro.setUsuario(inv.getUsuarioInvitado());
-        miembro.setRol(RolComunidad.MEMBER);
-        miembroComunidadRepository.guardar(miembro);
+        MiembroComunidad existente = miembroComunidadRepository.buscarPorUsuarioYComunidad(
+                inv.getUsuarioInvitado().getId(), inv.getComunidad().getId()
+        );
+        if (existente == null) {
+            MiembroComunidad miembro = new MiembroComunidad();
+            miembro.setComunidad(inv.getComunidad());
+            miembro.setUsuario(inv.getUsuarioInvitado());
+            miembro.setRol(RolComunidad.MEMBER);
+            miembroComunidadRepository.guardar(miembro);
+        }
     }
 
     @Transactional
