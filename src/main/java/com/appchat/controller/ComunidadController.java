@@ -112,6 +112,12 @@ public class ComunidadController {
         
         return Response.noContent().build();
     }
+    @GET
+@Path("/invitaciones/pendientes")
+public Response listarInvitacionesPendientes() {
+    Long userId = (Long) requestContext.getProperty("userId");
+    return Response.ok(comunidadService.listarInvitacionesPendientes(userId)).build();
+}
     
     @PUT
     @Path("/invitaciones/{invitacionId}/aceptar")

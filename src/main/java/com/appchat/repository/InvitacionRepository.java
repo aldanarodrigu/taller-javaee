@@ -5,6 +5,7 @@ import com.appchat.model.enums.EstadoInvitacion;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
+import java.util.List;
 
 @ApplicationScoped
 public class InvitacionRepository {
@@ -38,4 +39,14 @@ public class InvitacionRepository {
     public void actualizar(InvitacionComunidad inv) {
         em.merge(inv);
     }
+    
+    public List<InvitacionComunidad> listarPendientesPorUsuario(Long userId) {
+    return em.createQuery(
+            "SELECT i FROM InvitacionComunidad i " +
+            "WHERE i.usuarioInvitado.id = :userId " +
+            "AND i.estado = :estado", InvitacionComunidad.class)
+            .setParameter("userId", userId)
+            .setParameter("estado", EstadoInvitacion.PENDIENTE)
+            .getResultList();
+}
 }
