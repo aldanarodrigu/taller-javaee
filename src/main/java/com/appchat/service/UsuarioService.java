@@ -91,6 +91,7 @@ public void actualizarFoto(Long id, String url) {
         dto.setEmail(usuario.getEmail());
         dto.setEstado(usuario.getEstado());
         dto.setUsername(usuario.getUsername());
+        dto.setFotoPerfil(usuario.getFotoPerfil());
         return dto;
     }
 

@@ -3,6 +3,7 @@ package com.appchat.controller;
 import com.appchat.service.UsuarioService;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
+import jakarta.servlet.annotation.MultipartConfig;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
@@ -15,6 +16,11 @@ import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.util.UUID;
 
+import java.util.Arrays;
+
+
+@MultipartConfig(maxFileSize = 5242880)
+
 @jakarta.ws.rs.Path("/usuarios/{id}/foto")
 public class FotoController {
 
@@ -24,37 +30,46 @@ public class FotoController {
     @Context
     private ContainerRequestContext requestContext;
 
-    @POST
-    @Consumes(MediaType.MULTIPART_FORM_DATA)
-    @Produces(MediaType.APPLICATION_JSON)
-    public Response subirFoto(
-            @PathParam("id") Long id,
-            @Context jakarta.servlet.http.HttpServletRequest request) {
+@POST
+@Consumes(MediaType.MULTIPART_FORM_DATA)
+@Produces(MediaType.APPLICATION_JSON)
+public Response subirFoto(
+        @PathParam("id") Long id,
+        byte[] body,
+        @Context jakarta.ws.rs.core.HttpHeaders headers) {
 
-        Long userId = (Long) requestContext.getProperty("userId");
-        if (!userId.equals(id)) {
-            return Response.status(Response.Status.FORBIDDEN).build();
-        }
-
-        try {
-            jakarta.servlet.http.Part part = request.getPart("foto");
-            String nombreArchivo = UUID.randomUUID().toString() + obtenerExtension(part.getSubmittedFileName());
-
-            String uploadDir = System.getProperty("com.sun.aas.instanceRoot")
-                    + File.separator + "uploads";
-            Files.createDirectories(java.nio.file.Paths.get(uploadDir));
-
-            java.nio.file.Path destino = java.nio.file.Paths.get(uploadDir, nombreArchivo);
-            Files.copy(part.getInputStream(), destino, StandardCopyOption.REPLACE_EXISTING);
-
-            String url = "/appchat/uploads/" + nombreArchivo;
-            usuarioService.actualizarFoto(id, url);
-
-            return Response.ok("{\"url\":\"" + url + "\"}").build();
-        } catch (Exception e) {
-            return Response.serverError().entity("Error al subir foto: " + e.getMessage()).build();
-        }
+    Long userId = (Long) requestContext.getProperty("userId");
+    if (!userId.equals(id)) {
+        return Response.status(Response.Status.FORBIDDEN).build();
     }
+
+    try {
+        // extraer el contenido del multipart manualmente
+        String contentType = headers.getHeaderString("Content-Type");
+        String boundary = contentType.split("boundary=")[1];
+        String bodyStr = new String(body);
+        
+        // encontrar los bytes de la imagen entre los boundaries
+        int start = bodyStr.indexOf("\r\n\r\n") + 4;
+        int end = bodyStr.lastIndexOf("\r\n--" + boundary);
+        byte[] imageBytes = java.util.Arrays.copyOfRange(body, start, end);
+        
+        // detectar tipo de imagen
+        String imgContentType = "image/jpeg";
+        if (bodyStr.contains("Content-Type: ")) {
+            imgContentType = bodyStr.split("Content-Type: ")[1].split("\r\n")[0].trim();
+        }
+        
+        String base64 = "data:" + imgContentType + ";base64," 
+                + java.util.Base64.getEncoder().encodeToString(imageBytes);
+        
+        usuarioService.actualizarFoto(id, base64);
+        
+        return Response.ok("{\"url\":\"" + base64 + "\"}").build();
+    } catch (Exception e) {
+        return Response.serverError().entity("Error: " + e.getMessage()).build();
+    }
+}
 
     private String obtenerExtension(String nombreArchivo) {
         if (nombreArchivo == null) return ".jpg";
