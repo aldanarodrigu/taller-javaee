@@ -10,7 +10,6 @@ public class ActualizarUsuarioDTO {
     @NotBlank
     private String apellido;
     
-    @NotBlank
     private String fotoPerfil;
 
     public String getNombre() {
