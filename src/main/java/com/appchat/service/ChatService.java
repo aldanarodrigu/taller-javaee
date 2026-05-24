@@ -70,12 +70,15 @@ public class ChatService {
         }
 
         validarParticipacion(chat, emisorId);
+        
+        //si es un canal de comunicados
+        validarPermisoEnvio(chat, emisorId);
 
         Usuario emisor = usuarioRepository.buscarPorId(emisorId);
 
         if (emisor == null) {
             throw new NotFoundException("Usuario no existe.");
-    }
+        }
 
         Mensaje mensaje = new Mensaje();
         mensaje.setContenido(contenido);
@@ -728,6 +731,25 @@ public class ChatService {
 
     private boolean esAcuseLecturaPorMensaje(MensajeWSDTO dto) {
         return dto.getAccion() != null && "LEIDO_MENSAJE".equalsIgnoreCase(dto.getAccion());
+    }
+
+    private void validarPermisoEnvio(Chat chat, Long emisorId) {
+        
+        if(chat.getTipo() !=  TipoChat.CANAL){
+            return;
+        }
+        
+        boolean esAdmin = chat.getListaParticipaciones().stream()
+            .anyMatch(participacion ->
+                    participacion.getUsuario().getId().equals(emisorId)
+                    && participacion.getRol() == RolGrupo.ADMIN);
+        
+        if(!esAdmin){
+            throw new ForbiddenException(
+            "Solo administradores pueden enviar mensajes en este canal"
+            );
+        }
+        
     }
     
 }
