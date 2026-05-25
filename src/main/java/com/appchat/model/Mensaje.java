@@ -49,6 +49,10 @@ public class Mensaje {
     @JoinColumn(name = "emisor_id", nullable = false)
     private Usuario emisor;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "parent_id")
+    private Mensaje parentMessage;
+
     @PrePersist
     public void prePersist() {
         if (fechaEnvio == null) {
@@ -113,5 +117,13 @@ public class Mensaje {
 
     public void setEmisor(Usuario emisor) {
         this.emisor = emisor;
+    }
+
+    public Mensaje getParentMessage() {
+        return parentMessage;
+    }
+
+    public void setParentMessage(Mensaje parentMessage) {
+        this.parentMessage = parentMessage;
     }
 }

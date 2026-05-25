@@ -4,6 +4,7 @@ import com.appchat.model.enums.EstadoMensaje;
 import com.appchat.model.enums.TipoMensaje;
 import java.time.LocalDateTime;
 import java.util.Date;
+import java.util.List;
 
 public class MensajeDTO {
 
@@ -15,6 +16,8 @@ public class MensajeDTO {
     private Long emisorId;
     private String emisorNombre;
     private String emisorApellido;
+    private Long parentId;
+    private List<ReaccionDTO> reacciones;
 
     public Long getId() {
         return id;
@@ -78,5 +81,21 @@ public class MensajeDTO {
 
     public void setEmisorApellido(String emisorApellido) {
         this.emisorApellido = emisorApellido;
+    }
+
+    public Long getParentId() {
+        return parentId;
+    }
+
+    public void setParentId(Long parentId) {
+        this.parentId = parentId;
+    }
+
+    public List<ReaccionDTO> getReacciones() {
+        return reacciones;
+    }
+
+    public void setReacciones(List<ReaccionDTO> reacciones) {
+        this.reacciones = reacciones;
     }
 }

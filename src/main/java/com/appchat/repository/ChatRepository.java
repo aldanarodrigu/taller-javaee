@@ -143,6 +143,18 @@ public class ChatRepository {
                 .getSingleResult();
     }    
 
+    public void guardarReaccion(com.appchat.model.Reaccion reaccion) {
+        em.persist(reaccion);
+    }
+
+    public java.util.List<com.appchat.model.Reaccion> buscarReaccionesPorMensaje(Long mensajeId) {
+        return em.createQuery(
+                "SELECT r FROM Reaccion r JOIN FETCH r.usuario WHERE r.mensaje.id = :mensajeId ORDER BY r.fecha ASC",
+                com.appchat.model.Reaccion.class)
+                .setParameter("mensajeId", mensajeId)
+                .getResultList();
+    }
+
     public void flush() {
         em.flush();
     }

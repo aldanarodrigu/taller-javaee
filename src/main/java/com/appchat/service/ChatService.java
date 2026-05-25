@@ -62,6 +62,11 @@ public class ChatService {
 
     @Transactional
     public MensajeDTO enviarMensaje(Long chatId, Long emisorId, String contenido) {
+        return enviarMensaje(chatId, emisorId, contenido, null);
+    }
+
+    @Transactional
+    public MensajeDTO enviarMensaje(Long chatId, Long emisorId, String contenido, Long parentMensajeId) {
 
         Chat chat = chatRepository.buscarChatPorId(chatId);
         
@@ -86,6 +91,16 @@ public class ChatService {
         mensaje.setEmisor(emisor);
         mensaje.setTipo(TipoMensaje.TEXTO);
         mensaje.setEstado(EstadoMensaje.ENVIADO);
+        if (parentMensajeId != null) {
+            Mensaje parent = chatRepository.buscarMensajePorId(parentMensajeId);
+            if (parent == null) {
+                throw new NotFoundException("Mensaje padre no encontrado");
+            }
+            if (!parent.getChat().getId().equals(chatId)) {
+                throw new BadRequestException("parentId no pertenece al mismo chat");
+            }
+            mensaje.setParentMessage(parent);
+        }
         
         chatRepository.guardarMensaje(mensaje);
 
@@ -95,6 +110,50 @@ public class ChatService {
 
         notificarChat(chat, mensaje, dto);
         
+        return dto;
+    }
+
+    @Transactional
+    public com.appchat.dto.ReaccionDTO agregarReaccion(Long usuarioId, Long mensajeId, String tipo) {
+        Mensaje mensaje = chatRepository.buscarMensajePorId(mensajeId);
+        if (mensaje == null) {
+            throw new NotFoundException("Mensaje no encontrado");
+        }
+
+        validarParticipacion(mensaje.getChat(), usuarioId);
+
+        com.appchat.model.Reaccion reaccion = new com.appchat.model.Reaccion();
+        reaccion.setMensaje(mensaje);
+        reaccion.setTipo(tipo);
+        reaccion.setUsuario(usuarioRepository.buscarPorId(usuarioId));
+
+        chatRepository.guardarReaccion(reaccion);
+        chatRepository.flush();
+
+        com.appchat.dto.ReaccionDTO dto = new com.appchat.dto.ReaccionDTO();
+        dto.setId(reaccion.getId());
+        dto.setTipo(reaccion.getTipo());
+        dto.setUsuarioId(reaccion.getUsuario().getId());
+        dto.setUsuarioNombre(reaccion.getUsuario().getNombre());
+        dto.setUsuarioApellido(reaccion.getUsuario().getApellido());
+        dto.setFecha(reaccion.getFecha());
+
+        // Notificar a participantes conectados
+        try {
+            String json = mapper.writeValueAsString(java.util.Map.of("type", "REACTION_ADDED", "messageId", mensajeId, "reaction", dto));
+            for (Long userId : obtenerUsuariosDelChat(mensaje.getChat(), mensaje.getEmisor().getId())) {
+                if (!chatHub.obtenerSesiones(userId).isEmpty()) {
+                    chatHub.enviarAUsuario(userId, json);
+                }
+            }
+            // also notify emisor
+            if (!chatHub.obtenerSesiones(mensaje.getEmisor().getId()).isEmpty()) {
+                chatHub.enviarAUsuario(mensaje.getEmisor().getId(), json);
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("Error serializando reacción", e);
+        }
+
         return dto;
     }
     
@@ -553,6 +612,24 @@ public class ChatService {
         dto.setEmisorId(mensaje.getEmisor().getId());
         dto.setEmisorNombre(mensaje.getEmisor().getNombre());
         dto.setEmisorApellido(mensaje.getEmisor().getApellido());
+        if (mensaje.getParentMessage() != null) {
+            dto.setParentId(mensaje.getParentMessage().getId());
+        }
+
+        // cargar reacciones
+        java.util.List<com.appchat.model.Reaccion> reacciones = chatRepository.buscarReaccionesPorMensaje(mensaje.getId());
+        java.util.List<com.appchat.dto.ReaccionDTO> ra = new java.util.ArrayList<>();
+        for (com.appchat.model.Reaccion r : reacciones) {
+            com.appchat.dto.ReaccionDTO rd = new com.appchat.dto.ReaccionDTO();
+            rd.setId(r.getId());
+            rd.setTipo(r.getTipo());
+            rd.setUsuarioId(r.getUsuario().getId());
+            rd.setUsuarioNombre(r.getUsuario().getNombre());
+            rd.setUsuarioApellido(r.getUsuario().getApellido());
+            rd.setFecha(r.getFecha());
+            ra.add(rd);
+        }
+        dto.setReacciones(ra);
 
         return dto;
     }
@@ -610,10 +687,20 @@ public class ChatService {
         throw new BadRequestException("contenido requerido");
     }
 
+    // If action is reaction
+    if (dto.getAccion() != null && "REACCION".equalsIgnoreCase(dto.getAccion())) {
+        if (dto.getMensajeId() == null) {
+            throw new BadRequestException("mensajeId requerido para reacción");
+        }
+        agregarReaccion(userId, dto.getMensajeId(), dto.getContenido());
+        return;
+    }
+
     enviarMensaje(
         dto.getChatId(),
         userId,
-        dto.getContenido()
+        dto.getContenido(),
+        dto.getParentId()
     );
 }
 
