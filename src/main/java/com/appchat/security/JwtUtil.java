@@ -6,20 +6,30 @@ import io.jsonwebtoken.security.Keys;
 
 import java.security.Key;
 import java.util.Date;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public class JwtUtil {
 
-    private static final String JWT_SECRET = System.getenv("JWT_SECRET");
+    private static final Logger LOGGER = Logger.getLogger(JwtUtil.class.getName());
+    private static final String JWT_SECRET_ENV = System.getenv("JWT_SECRET");
     private static final Key KEY;
 
     static {
-        if (JWT_SECRET == null || JWT_SECRET.trim().isEmpty()) {
-            throw new IllegalStateException("Falta la variable de entorno JWT_SECRET");
+        String secret = JWT_SECRET_ENV;
+        // Allow JVM system property as an alternative (useful for -DJWT_SECRET=...)
+        if (secret == null || secret.trim().isEmpty()) {
+            secret = System.getProperty("JWT_SECRET");
         }
-        if (JWT_SECRET.length() < 32) {
+        // Fallback explícito solicitado para desarrollo local
+        if (secret == null || secret.trim().isEmpty()) {
+            secret = "loqueseaperoquetenga32caracteres";
+            LOGGER.log(Level.WARNING, "Variable de entorno JWT_SECRET no encontrada. Usando valor por defecto para desarrollo.");
+        }
+        if (secret.length() < 32) {
             throw new IllegalStateException("JWT_SECRET debe tener al menos 32 caracteres");
         }
-        KEY = Keys.hmacShaKeyFor(JWT_SECRET.getBytes());
+        KEY = Keys.hmacShaKeyFor(secret.getBytes());
     }
 
     public static Key getKey() {
