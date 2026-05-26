@@ -8,11 +8,13 @@ import com.appchat.dto.ChatResumenDTO;
 import com.appchat.dto.HistorialMensajesDTO;
 import com.appchat.dto.MensajeDTO;
 import com.appchat.dto.MensajeWSDTO;
+import com.appchat.dto.MensajeFijadoDTO;
 import com.appchat.model.Chat;
 import com.appchat.model.Comunidad;
 import com.appchat.model.Mensaje;
 import com.appchat.model.Participa;
 import com.appchat.model.Usuario;
+import com.appchat.model.MensajeFijado;
 import com.appchat.model.enums.EstadoMensaje;
 import com.appchat.model.enums.RolGrupo;
 import com.appchat.model.enums.TipoChat;
@@ -839,4 +841,105 @@ public class ChatService {
         
     }
     
+    @Transactional
+    public void fijarMensaje(Long chatId, Long mensajeId, Long usuarioId) {
+
+        Chat chat = chatRepository.buscarChatPorId(chatId);
+
+        if (chat == null) {
+            throw new NotFoundException("Chat no existe.");
+        }
+
+        validarParticipacion(chat, usuarioId);
+
+        if (chat.getTipo() == TipoChat.GRUPAL) {
+            validarAdminGrupo(chat, usuarioId);
+        }
+
+        Mensaje mensaje = chatRepository.buscarMensajePorId(mensajeId);
+
+        if (mensaje == null || !mensaje.getChat().getId().equals(chatId)) {
+            throw new NotFoundException("Mensaje no pertenece al chat.");
+        }
+
+        if (chatRepository.buscarMensajeFijado(chatId, mensajeId) != null) {
+            throw new ClientErrorException("El mensaje ya está fijado", Response.Status.CONFLICT);
+        }
+
+        Long cantidadFijados = chatRepository.contarMensajesFijados(chatId);
+
+        if (cantidadFijados >= 3) {
+            throw new BadRequestException("Solo se pueden fijar hasta 3 mensajes por chat");
+        }
+
+        Usuario usuario = verificarUsuarioExiste(usuarioId);
+
+        MensajeFijado mensajeFijado = new MensajeFijado();
+        mensajeFijado.setChat(chat);
+        mensajeFijado.setMensaje(mensaje);
+        mensajeFijado.setFijadoPor(usuario);
+
+        chatRepository.guardarMensajeFijado(mensajeFijado);
+        chatRepository.flush();
+    }
+
+    @Transactional
+    public void desfijarMensaje(Long chatId, Long mensajeId, Long usuarioId) {
+
+            Chat chat = chatRepository.buscarChatPorId(chatId);
+
+            if (chat == null) {
+                throw new NotFoundException("Chat no existe.");
+            }
+
+            validarParticipacion(chat, usuarioId);
+
+            if (chat.getTipo() == TipoChat.GRUPAL) {
+                validarAdminGrupo(chat, usuarioId);
+            }
+
+            MensajeFijado mensajeFijado = chatRepository.buscarMensajeFijado(chatId, mensajeId);
+
+            if (mensajeFijado == null) {
+                throw new NotFoundException("El mensaje no está fijado");
+            }
+
+            chatRepository.eliminarMensajeFijado(mensajeFijado);
+            chatRepository.flush();
+        }
+
+        @Transactional
+        public List<MensajeFijadoDTO> listarMensajesFijados(Long chatId, Long usuarioId) {
+
+            Chat chat = chatRepository.buscarChatPorId(chatId);
+
+            if (chat == null) {
+                throw new NotFoundException("Chat no existe.");
+            }
+
+            validarParticipacion(chat, usuarioId);
+
+            List<MensajeFijado> fijados = chatRepository.listarMensajesFijados(chatId);
+
+            List<MensajeFijadoDTO> respuesta = new ArrayList<>();
+
+            for (MensajeFijado mf : fijados) {
+                respuesta.add(mapearMensajeFijado(mf));
+            }
+
+            return respuesta;
+        }
+
+        private MensajeFijadoDTO mapearMensajeFijado(MensajeFijado mf) {
+            MensajeFijadoDTO dto = new MensajeFijadoDTO();
+
+            dto.setId(mf.getId());
+            dto.setChatId(mf.getChat().getId());
+            dto.setMensajeId(mf.getMensaje().getId());
+            dto.setContenido(mf.getMensaje().getContenido());
+            dto.setFijadoPorId(mf.getFijadoPor().getId());
+            dto.setFechaFijado(mf.getFechaFijado());
+
+            return dto;
+        }
 }
