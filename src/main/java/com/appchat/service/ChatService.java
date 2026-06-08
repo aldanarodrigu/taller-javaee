@@ -464,6 +464,11 @@ public class ChatService {
 
         if (!usuarioSolicitanteId.equals(usuarioObjetivoId)) {
             validarAdminGrupo(chat, usuarioSolicitanteId);
+        } else if (chat.getListaParticipaciones().stream()
+                .anyMatch(participacion -> participacion.getUsuario().getId().equals(usuarioObjetivoId)
+                        && participacion.getRol() == RolGrupo.ADMIN)
+                && esUnicoAdmin(chat, usuarioObjetivoId)) {
+            throw new BadRequestException("El ultimo admin no puede salir del grupo");
         }
 
         chat.removerParticipante(usuarioObjetivoId);
