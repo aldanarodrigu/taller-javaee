@@ -673,6 +673,17 @@ public class ChatService {
         return;
     }
 
+        if (dto.getAccion() != null
+                && "TYPING".equalsIgnoreCase(dto.getAccion())) {
+
+            if (dto.getChatId() == null) {
+                throw new BadRequestException("chatId requerido");
+            }
+
+            notificarEscribiendo(userId, dto.getChatId());
+            return;
+        }
+
     if (esAcuseLectura(dto)) {
         if (dto.getMensajeId() == null && dto.getChatId() == null) {
             throw new BadRequestException("mensajeId o chatId requerido");
@@ -744,6 +755,10 @@ public class ChatService {
         }
 
         return dto;
+    }
+
+    private void notificarEscribiendo(Long userId, Long chatId) {
+        // TODO: enviar evento TYPING a los participantes conectados
     }
 
     @Transactional
