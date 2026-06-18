@@ -9,11 +9,13 @@ import com.appchat.dto.HistorialMensajesDTO;
 import com.appchat.dto.AdjuntoUploadRequestDTO;
 import com.appchat.dto.MensajeDTO;
 import com.appchat.dto.MensajeWSDTO;
+import com.appchat.dto.MensajeFijadoDTO;
 import com.appchat.model.Chat;
 import com.appchat.model.Comunidad;
 import com.appchat.model.Mensaje;
 import com.appchat.model.Participa;
 import com.appchat.model.Usuario;
+import com.appchat.model.MensajeFijado;
 import com.appchat.model.enums.EstadoMensaje;
 import com.appchat.model.enums.RolGrupo;
 import com.appchat.model.enums.TipoChat;
@@ -86,12 +88,15 @@ public class ChatService {
         }
 
         validarParticipacion(chat, emisorId);
+        
+        //si es un canal de comunicados
+        validarPermisoEnvio(chat, emisorId);
 
         Usuario emisor = usuarioRepository.buscarPorId(emisorId);
 
         if (emisor == null) {
             throw new NotFoundException("Usuario no existe.");
-    }
+        }
 
         Mensaje mensaje = new Mensaje();
         mensaje.setContenido(contenido);
@@ -331,10 +336,11 @@ public class ChatService {
     }
     
     @Transactional
-    public List<ChatResumenDTO> listarChatsDelUsuario(Long usuarioId) {
+    public List<ChatResumenDTO> listarChatsDeComunidad(Long usuarioId, Long comunidadId) {
         verificarUsuarioExiste(usuarioId);
 
-        List<Chat> chats = chatRepository.listarChatsDeUsuario(usuarioId);
+        List<Chat> chats = chatRepository.listarChatsDeUsuarioYComunidad(usuarioId, comunidadId);
+        
         List<ChatResumenDTO> respuestas = new ArrayList<>();
 
         for (Chat chat : chats) {
@@ -899,6 +905,7 @@ public class ChatService {
         return dto;
     }
 
+    @Transactional
     public void procesarMensajeWebSocket(Long userId, String message) {
 
     if (message == null || message.isBlank()) {
@@ -1087,59 +1094,124 @@ public class ChatService {
         return dto.getAccion() != null && "LEIDO_MENSAJE".equalsIgnoreCase(dto.getAccion());
     }
 
-    private static class AdjuntoMeta {
-        public String storageName;
-        public String originalName;
-        public String mimeType;
-        public Long size;
-    }
-
-    private AdjuntoMeta parseAdjuntoMeta(String contenido) {
-        if (contenido == null || contenido.isBlank()) {
-            return null;
+    private void validarPermisoEnvio(Chat chat, Long emisorId) {
+        
+        if(chat.getTipo() !=  TipoChat.CANAL){
+            return;
         }
-        try {
-            return mapper.readValue(contenido, AdjuntoMeta.class);
-        } catch (Exception e) {
-            return null;
+        
+        boolean esAdmin = chat.getListaParticipaciones().stream()
+            .anyMatch(participacion ->
+                    participacion.getUsuario().getId().equals(emisorId)
+                    && participacion.getRol() == RolGrupo.ADMIN);
+        
+        if(!esAdmin){
+            throw new ForbiddenException(
+            "Solo administradores pueden enviar mensajes en este canal"
+            );
         }
-    }
-
-    private byte[] decodeBase64(String raw) {
-        String valor = raw.trim();
-        int comma = valor.indexOf(',');
-        if (valor.startsWith("data:") && comma > 0) {
-            valor = valor.substring(comma + 1);
-        }
-        try {
-            return Base64.getDecoder().decode(valor);
-        } catch (Exception e) {
-            throw new BadRequestException("contenidoBase64 inválido");
-        }
-    }
-
-    private String normalizarMime(String mimeType) {
-        if (mimeType == null || mimeType.isBlank()) {
-            return MediaType.APPLICATION_OCTET_STREAM;
-        }
-        return mimeType.trim().toLowerCase();
-    }
-
-    private String sanitizeFileName(String name) {
-        String cleaned = name.replace("\\", "_").replace("/", "_").trim();
-        if (cleaned.isBlank()) {
-            return "archivo";
-        }
-        return cleaned.length() > 180 ? cleaned.substring(cleaned.length() - 180) : cleaned;
-    }
-
-    private String obtenerExtension(String nombre) {
-        int idx = nombre.lastIndexOf('.');
-        if (idx < 0 || idx == nombre.length() - 1) {
-            return "";
-        }
-        String ext = nombre.substring(idx);
-        return ext.length() > 12 ? "" : ext;
+        
     }
     
+    @Transactional
+    public void fijarMensaje(Long chatId, Long mensajeId, Long usuarioId) {
+
+        Chat chat = chatRepository.buscarChatPorId(chatId);
+
+        if (chat == null) {
+            throw new NotFoundException("Chat no existe.");
+        }
+
+        validarParticipacion(chat, usuarioId);
+
+        if (chat.getTipo() == TipoChat.GRUPAL) {
+            validarAdminGrupo(chat, usuarioId);
+        }
+
+        Mensaje mensaje = chatRepository.buscarMensajePorId(mensajeId);
+
+        if (mensaje == null || !mensaje.getChat().getId().equals(chatId)) {
+            throw new NotFoundException("Mensaje no pertenece al chat.");
+        }
+
+        if (chatRepository.buscarMensajeFijado(chatId, mensajeId) != null) {
+            throw new ClientErrorException("El mensaje ya está fijado", Response.Status.CONFLICT);
+        }
+
+        Long cantidadFijados = chatRepository.contarMensajesFijados(chatId);
+
+        if (cantidadFijados >= 3) {
+            throw new BadRequestException("Solo se pueden fijar hasta 3 mensajes por chat");
+        }
+
+        Usuario usuario = verificarUsuarioExiste(usuarioId);
+
+        MensajeFijado mensajeFijado = new MensajeFijado();
+        mensajeFijado.setChat(chat);
+        mensajeFijado.setMensaje(mensaje);
+        mensajeFijado.setFijadoPor(usuario);
+
+        chatRepository.guardarMensajeFijado(mensajeFijado);
+        chatRepository.flush();
+    }
+
+    @Transactional
+    public void desfijarMensaje(Long chatId, Long mensajeId, Long usuarioId) {
+
+            Chat chat = chatRepository.buscarChatPorId(chatId);
+
+            if (chat == null) {
+                throw new NotFoundException("Chat no existe.");
+            }
+
+            validarParticipacion(chat, usuarioId);
+
+            if (chat.getTipo() == TipoChat.GRUPAL) {
+                validarAdminGrupo(chat, usuarioId);
+            }
+
+            MensajeFijado mensajeFijado = chatRepository.buscarMensajeFijado(chatId, mensajeId);
+
+            if (mensajeFijado == null) {
+                throw new NotFoundException("El mensaje no está fijado");
+            }
+
+            chatRepository.eliminarMensajeFijado(mensajeFijado);
+            chatRepository.flush();
+        }
+
+        @Transactional
+        public List<MensajeFijadoDTO> listarMensajesFijados(Long chatId, Long usuarioId) {
+
+            Chat chat = chatRepository.buscarChatPorId(chatId);
+
+            if (chat == null) {
+                throw new NotFoundException("Chat no existe.");
+            }
+
+            validarParticipacion(chat, usuarioId);
+
+            List<MensajeFijado> fijados = chatRepository.listarMensajesFijados(chatId);
+
+            List<MensajeFijadoDTO> respuesta = new ArrayList<>();
+
+            for (MensajeFijado mf : fijados) {
+                respuesta.add(mapearMensajeFijado(mf));
+            }
+
+            return respuesta;
+        }
+
+        private MensajeFijadoDTO mapearMensajeFijado(MensajeFijado mf) {
+            MensajeFijadoDTO dto = new MensajeFijadoDTO();
+
+            dto.setId(mf.getId());
+            dto.setChatId(mf.getChat().getId());
+            dto.setMensajeId(mf.getMensaje().getId());
+            dto.setContenido(mf.getMensaje().getContenido());
+            dto.setFijadoPorId(mf.getFijadoPor().getId());
+            dto.setFechaFijado(mf.getFechaFijado());
+
+            return dto;
+        }
 }

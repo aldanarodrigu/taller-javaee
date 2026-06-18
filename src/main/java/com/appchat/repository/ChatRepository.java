@@ -2,6 +2,7 @@ package com.appchat.repository;
 
 import com.appchat.model.Chat;
 import com.appchat.model.Mensaje;
+import com.appchat.model.MensajeFijado;
 import com.appchat.model.enums.TipoChat;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.persistence.EntityManager;
@@ -48,6 +49,21 @@ public class ChatRepository {
             ORDER BY c.fechaCreacion DESC
         """, Chat.class)
         .setParameter("usuarioId", usuarioId)
+        .getResultList();
+    }
+    
+    public List<Chat> listarChatsDeUsuarioYComunidad(Long usuarioId, Long comunidadId) {
+
+        return em.createQuery("""
+            SELECT c
+            FROM Chat c
+            JOIN c.participantes p
+            WHERE p.usuario.id = :usuarioId
+            AND c.comunidad.id = :comunidadId
+            ORDER BY c.fechaCreacion DESC
+        """, Chat.class)
+        .setParameter("usuarioId", usuarioId)
+        .setParameter("comunidadId", comunidadId)
         .getResultList();
     }
 
@@ -349,5 +365,43 @@ public class ChatRepository {
 
     public void flush() {
         em.flush();
+    }
+    
+    public MensajeFijado buscarMensajeFijado(Long chatId, Long mensajeId) {
+        List<MensajeFijado> resultados = em.createQuery(
+                "SELECT mf FROM MensajeFijado mf " +
+                "WHERE mf.chat.id = :chatId AND mf.mensaje.id = :mensajeId",
+                MensajeFijado.class)
+                .setParameter("chatId", chatId)
+                .setParameter("mensajeId", mensajeId)
+                .getResultList();
+
+        return resultados.isEmpty() ? null : resultados.get(0);
+    }
+
+    public List<MensajeFijado> listarMensajesFijados(Long chatId) {
+        return em.createQuery(
+                "SELECT mf FROM MensajeFijado mf " +
+                "WHERE mf.chat.id = :chatId " +
+                "ORDER BY mf.fechaFijado DESC",
+                MensajeFijado.class)
+                .setParameter("chatId", chatId)
+                .getResultList();
+    }
+
+    public Long contarMensajesFijados(Long chatId) {
+        return em.createQuery(
+                "SELECT COUNT(mf) FROM MensajeFijado mf WHERE mf.chat.id = :chatId",
+                Long.class)
+                .setParameter("chatId", chatId)
+                .getSingleResult();
+    }
+
+    public void guardarMensajeFijado(MensajeFijado mensajeFijado) {
+        em.persist(mensajeFijado);
+    }
+
+    public void eliminarMensajeFijado(MensajeFijado mensajeFijado) {
+        em.remove(em.contains(mensajeFijado) ? mensajeFijado : em.merge(mensajeFijado));
     }
 }

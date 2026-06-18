@@ -6,6 +6,7 @@ import com.appchat.dto.ChatMiembrosRequestDTO;
 import com.appchat.dto.ChatRolGrupoRequestDTO;
 import com.appchat.dto.ChatResumenDTO;
 import com.appchat.dto.MensajeDTO;
+import com.appchat.dto.MensajeFijadoDTO;
 import com.appchat.service.ChatService;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
@@ -14,6 +15,7 @@ import jakarta.ws.rs.DELETE;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.PUT;
 import jakarta.ws.rs.POST;
+import jakarta.ws.rs.GET;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
@@ -133,5 +135,42 @@ public class ChatGrupoController {
         }
 
         return (Long) userIdObj;
+    }
+    
+    @POST
+    @Path("/{id}/mensajes/{mensajeId}/pin")
+    public Response fijarMensaje(
+            @PathParam("id") Long chatId,
+            @PathParam("mensajeId") Long mensajeId) {
+
+        Long usuarioId = getUsuarioId();
+
+        service.fijarMensaje(chatId, mensajeId, usuarioId);
+
+        return Response.noContent().build();
+    }
+
+    @DELETE
+    @Path("/{id}/mensajes/{mensajeId}/pin")
+    public Response desfijarMensaje(
+            @PathParam("id") Long chatId,
+            @PathParam("mensajeId") Long mensajeId) {
+
+        Long usuarioId = getUsuarioId();
+
+        service.desfijarMensaje(chatId, mensajeId, usuarioId);
+
+        return Response.noContent().build();
+    }
+
+    @GET
+    @Path("/{id}/mensajes/pin")
+    public Response listarMensajesFijados(@PathParam("id") Long chatId) {
+
+        Long usuarioId = getUsuarioId();
+
+        List<MensajeFijadoDTO> fijados = service.listarMensajesFijados(chatId, usuarioId);
+
+        return Response.ok(fijados).build();
     }
 }

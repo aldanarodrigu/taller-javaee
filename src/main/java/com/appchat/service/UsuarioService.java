@@ -66,6 +66,15 @@ public class UsuarioService{
 
         return mapearUsuario(usuario);
     }
+    
+    @Transactional
+public void actualizarFoto(Long id, String url) {
+    Usuario usuario = repository.buscarPorId(id);
+    if (usuario != null) {
+        usuario.setFotoPerfil(url);
+        repository.actualizar(usuario);
+    }
+}
 
     @Transactional
     public List<UsuarioResponseDTO> buscarUsuarios(String q) {
@@ -81,6 +90,8 @@ public class UsuarioService{
         dto.setApellido(usuario.getApellido());
         dto.setEmail(usuario.getEmail());
         dto.setEstado(usuario.getEstado());
+        dto.setUsername(usuario.getUsername());
+        dto.setFotoPerfil(usuario.getFotoPerfil());
         return dto;
     }
 

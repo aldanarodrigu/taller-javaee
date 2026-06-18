@@ -9,6 +9,7 @@
     <class>com.appchat.model.Mensaje</class>
     <class>com.appchat.model.Comunidad</class>
     <class>com.appchat.model.MiembroComunidad</class>
+    <class>com.appchat.model.InvitacionComunidad</class>
     <exclude-unlisted-classes>false</exclude-unlisted-classes>
     <properties>
       <property name="hibernate.show_sql" value="true"/>

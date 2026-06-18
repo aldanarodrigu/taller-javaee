@@ -1,7 +1,5 @@
-
 package com.appchat.repository;
 
-import com.appchat.dto.UsuarioResponseDTO;
 import com.appchat.model.Comunidad;
 import com.appchat.model.Usuario;
 import jakarta.persistence.EntityManager;
@@ -59,21 +57,12 @@ public class ComunidadRepository {
     }
     
     public List<Comunidad> listarPorUsuario(Long userId) {
-    return em.createQuery(
-        "SELECT c FROM MiembroComunidad mc JOIN mc.comunidad c WHERE mc.usuario.id = :userId",
-        Comunidad.class
-    )
-    .setParameter("userId", userId)
-    .getResultList();
-}
-
-    public int eliminarMiembro(Long comunidadId, Long userId) {
         return em.createQuery(
-                "DELETE FROM MiembroComunidad mc WHERE mc.comunidad.id = :comunidadId AND mc.usuario.id = :userId"
+            "SELECT c FROM MiembroComunidad mc JOIN mc.comunidad c WHERE mc.usuario.id = :userId",
+            Comunidad.class
         )
-        .setParameter("comunidadId", comunidadId)
         .setParameter("userId", userId)
-        .executeUpdate();
+        .getResultList();
     }
     
 }

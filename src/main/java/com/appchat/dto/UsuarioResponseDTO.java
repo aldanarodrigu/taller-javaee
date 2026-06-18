@@ -59,4 +59,14 @@ public class UsuarioResponseDTO {
         this.username = username;
     }
     
+    private String fotoPerfil;
+
+public String getFotoPerfil() {
+    return fotoPerfil;
+}
+
+public void setFotoPerfil(String fotoPerfil) {
+    this.fotoPerfil = fotoPerfil;
+}
+    
 }
