@@ -66,5 +66,14 @@ public class ComunidadRepository {
     .setParameter("userId", userId)
     .getResultList();
 }
+
+    public int eliminarMiembro(Long comunidadId, Long userId) {
+        return em.createQuery(
+                "DELETE FROM MiembroComunidad mc WHERE mc.comunidad.id = :comunidadId AND mc.usuario.id = :userId"
+        )
+        .setParameter("comunidadId", comunidadId)
+        .setParameter("userId", userId)
+        .executeUpdate();
+    }
     
 }

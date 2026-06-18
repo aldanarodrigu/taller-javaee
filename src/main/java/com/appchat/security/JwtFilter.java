@@ -17,6 +17,10 @@ public class JwtFilter implements ContainerRequestFilter {
     @Override
     public void filter(ContainerRequestContext requestContext) {
 
+        if ("OPTIONS".equalsIgnoreCase(requestContext.getMethod())) {
+            return;
+        }
+
         String path = requestContext.getUriInfo().getPath();
 
         if (path.contains("auth/login") || path.contains("auth/registro")) {
@@ -26,9 +30,7 @@ public class JwtFilter implements ContainerRequestFilter {
         String authHeader = requestContext.getHeaderString("Authorization");
 
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            requestContext.abortWith(Response.status(401)
-                    .entity("Falta token")
-                    .build());
+            requestContext.abortWith(buildUnauthorized("Falta token"));
             return;
         }
 
@@ -46,9 +48,7 @@ public class JwtFilter implements ContainerRequestFilter {
             requestContext.setProperty("email", email);
             
             if (userId == null) {
-                requestContext.abortWith(Response.status(401)
-                        .entity("Token inválido (sin userId)")
-                        .build());
+                requestContext.abortWith(buildUnauthorized("Token inválido (sin userId)"));
                 return;
             }
 
@@ -56,9 +56,16 @@ public class JwtFilter implements ContainerRequestFilter {
 
 
         } catch (Exception e) {
-            requestContext.abortWith(Response.status(401)
-                    .entity("Token inválido")
-                    .build());
+            requestContext.abortWith(buildUnauthorized("Token inválido"));
         }
+    }
+
+    private Response buildUnauthorized(String message) {
+        return Response.status(401)
+                .entity(message)
+                .header("Access-Control-Allow-Origin", "*")
+                .header("Access-Control-Allow-Headers", "origin, content-type, accept, authorization")
+                .header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, HEAD")
+                .build();
     }
 }

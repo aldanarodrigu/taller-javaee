@@ -34,6 +34,16 @@ public class ChatController {
     }
 
     @GET
+    @Path("/comunidad/{id}")
+    public Response listarChatsPorComunidad(@PathParam("id") Long comunidadId) {
+        Long usuarioId = getUsuarioId();
+
+        List<ChatResumenDTO> chats = service.listarChatsDelUsuarioEnComunidad(usuarioId, comunidadId);
+
+        return Response.ok(chats).build();
+    }
+
+    @GET
     @Path("/{id}/mensajes")
     public Response historialMensajes(@PathParam("id") Long chatId, @QueryParam("page") @DefaultValue("0") int page, @QueryParam("size") @DefaultValue("20") int size) {
         Long usuarioId = getUsuarioId();

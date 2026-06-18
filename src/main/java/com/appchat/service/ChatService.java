@@ -21,6 +21,8 @@ import com.appchat.repository.ChatRepository;
 import com.appchat.repository.UsuarioRepository;
 import com.appchat.websocket.ChatHub;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -54,7 +56,9 @@ public class ChatService {
     @Inject
     private ComunidadService comunidadService;
     
-    private static final ObjectMapper mapper = new ObjectMapper();
+    private static final ObjectMapper mapper = new ObjectMapper()
+            .registerModule(new JavaTimeModule())
+            .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
 
     @Transactional
     public MensajeDTO enviarMensaje(Long chatId, Long emisorId, String contenido) {
@@ -106,48 +110,30 @@ public class ChatService {
         return dto;
     }
 
-    @Transactional
+    @Transactional(Transactional.TxType.NOT_SUPPORTED)
     public com.appchat.dto.ReaccionDTO agregarReaccion(Long usuarioId, Long mensajeId, String tipo) {
-        Mensaje mensaje = chatRepository.buscarMensajePorId(mensajeId);
-        if (mensaje == null) {
-            throw new NotFoundException("Mensaje no encontrado");
-        }
+        // chatRepository.procesarReaccion usa REQUIRES_NEW → transacción propia que commitea antes de retornar
+        com.appchat.repository.ChatRepository.ReaccionResultado resultado =
+                chatRepository.procesarReaccion(usuarioId, mensajeId, tipo);
 
-        validarParticipacion(mensaje.getChat(), usuarioId);
-
-        com.appchat.model.Reaccion reaccion = new com.appchat.model.Reaccion();
-        reaccion.setMensaje(mensaje);
-        reaccion.setTipo(tipo);
-        reaccion.setUsuario(usuarioRepository.buscarPorId(usuarioId));
-
-        chatRepository.guardarReaccion(reaccion);
-        chatRepository.flush();
-
-        com.appchat.dto.ReaccionDTO dto = new com.appchat.dto.ReaccionDTO();
-        dto.setId(reaccion.getId());
-        dto.setTipo(reaccion.getTipo());
-        dto.setUsuarioId(reaccion.getUsuario().getId());
-        dto.setUsuarioNombre(reaccion.getUsuario().getNombre());
-        dto.setUsuarioApellido(reaccion.getUsuario().getApellido());
-        dto.setFecha(reaccion.getFecha());
-
-        // Notificar a participantes conectados
+        // En este punto la transacción ya commitó. Enviamos WS de forma segura.
+        String eventType = resultado.removido ? "REACTION_REMOVED" : "REACTION_ADDED";
         try {
-            String json = mapper.writeValueAsString(java.util.Map.of("type", "REACTION_ADDED", "messageId", mensajeId, "reaction", dto));
-            for (Long userId : obtenerUsuariosDelChat(mensaje.getChat(), mensaje.getEmisor().getId())) {
-                if (!chatHub.obtenerSesiones(userId).isEmpty()) {
-                    chatHub.enviarAUsuario(userId, json);
+            String json = mapper.writeValueAsString(java.util.Map.of(
+                "type", eventType,
+                "messageId", mensajeId,
+                "chatId", resultado.chatId,
+                "reaction", resultado.dto
+            ));
+            for (Long uid : resultado.participanteIds) {
+                if (!chatHub.obtenerSesiones(uid).isEmpty()) {
+                    chatHub.enviarAUsuario(uid, json);
                 }
             }
-            // also notify emisor
-            if (!chatHub.obtenerSesiones(mensaje.getEmisor().getId()).isEmpty()) {
-                chatHub.enviarAUsuario(mensaje.getEmisor().getId(), json);
-            }
         } catch (Exception e) {
-            throw new RuntimeException("Error serializando reacción", e);
+            // El WS no afecta la persistencia (ya commitada)
         }
-
-        return dto;
+        return resultado.dto;
     }
     
     private void notificarChat(Chat chat, Mensaje mensaje, MensajeDTO dtoMensaje) {
@@ -169,18 +155,18 @@ public class ChatService {
             }
         }
 
+        // Siempre notificar al emisor con el estado actual del mensaje
         if (entregado && mensaje.getEstado() == EstadoMensaje.ENVIADO) {
             mensaje.setEstado(EstadoMensaje.ENTREGADO);
             chatRepository.flush();
+        }
 
-            MensajeDTO dtoEntregado = mapearMensaje(mensaje);
-
-            try {
-                String jsonEntregado = mapper.writeValueAsString(dtoEntregado);
-                chatHub.enviarAUsuario(mensaje.getEmisor().getId(), jsonEntregado);
-            } catch (Exception e) {
-                throw new RuntimeException("Error serializando mensaje", e);
-            }
+        try {
+            MensajeDTO dtoEmisor = mapearMensaje(mensaje);
+            String jsonEmisor = mapper.writeValueAsString(dtoEmisor);
+            chatHub.enviarAUsuario(mensaje.getEmisor().getId(), jsonEmisor);
+        } catch (Exception e) {
+            // No lanzar excepción: el mensaje ya fue guardado, solo falla la notificación
         }
     }
     
@@ -201,6 +187,25 @@ public class ChatService {
 
         return respuestas;
     }
+
+    @Transactional
+    public List<ChatResumenDTO> listarChatsDelUsuarioEnComunidad(Long usuarioId, Long comunidadId) {
+        verificarUsuarioExiste(usuarioId);
+
+        Comunidad comunidad = comunidadService.buscarPorId(comunidadId);
+        if (comunidad == null) {
+            throw new NotFoundException("Comunidad no existe");
+        }
+
+        List<Chat> chats = chatRepository.listarChatsDeUsuarioEnComunidad(usuarioId, comunidadId);
+        List<ChatResumenDTO> respuestas = new ArrayList<>();
+
+        for (Chat chat : chats) {
+            respuestas.add(mapearResumen(chat, usuarioId));
+        }
+
+        return respuestas;
+    }
     
     @Transactional
     public HistorialMensajesDTO obtenerHistorialMensajes(Long chatId, Long usuarioId, int page, int size) {
@@ -212,10 +217,19 @@ public class ChatService {
 
         int paginaNormalizada = Math.max(page, 0);
         int tamanoNormalizado = size <= 0 ? 20 : size;
-        int offset = paginaNormalizada * tamanoNormalizado;
-
-        List<Mensaje> mensajes = chatRepository.buscarMensajesPagina(chatId, offset, tamanoNormalizado);
         long total = chatRepository.contarMensajes(chatId);
+
+        // La pagina 0 devuelve los mensajes mas recientes para evitar que
+        // los mensajes nuevos "desaparezcan" al refrescar historial.
+        long inicioLong = Math.max(total - ((long) tamanoNormalizado * (paginaNormalizada + 1)), 0);
+        long finLong = Math.max(total - ((long) tamanoNormalizado * paginaNormalizada), 0);
+
+        int inicio = (int) inicioLong;
+        int limite = (int) Math.max(finLong - inicioLong, 0);
+
+        List<Mensaje> mensajes = limite > 0
+                ? chatRepository.buscarMensajesPagina(chatId, inicio, limite)
+                : java.util.Collections.emptyList();
 
         HistorialMensajesDTO respuesta = new HistorialMensajesDTO();
         respuesta.setMensajes(mapearMensajes(mensajes));
@@ -465,6 +479,65 @@ public class ChatService {
         chatRepository.flush();
     }
 
+    @Transactional
+    public void eliminarGrupo(Long chatId, Long usuarioSolicitanteId) {
+        Chat chat = chatRepository.buscarChatPorId(chatId);
+        if (chat == null) {
+            throw new NotFoundException("Chat no existe.");
+        }
+
+        if (chat.getTipo() != TipoChat.GRUPAL) {
+            throw new BadRequestException("Solo se pueden eliminar grupos");
+        }
+
+        validarAdminGrupo(chat, usuarioSolicitanteId);
+
+        chatRepository.eliminarChat(chat);
+        chatRepository.flush();
+    }
+
+    @Transactional
+    public void fijarMensaje(Long chatId, Long mensajeId, Long usuarioId) {
+        Chat chat = chatRepository.buscarChatPorId(chatId);
+        if (chat == null) {
+            throw new NotFoundException("Chat no existe.");
+        }
+
+        validarParticipacion(chat, usuarioId);
+
+        Mensaje mensaje = chatRepository.buscarMensajePorId(mensajeId);
+        if (mensaje == null || !mensaje.getChat().getId().equals(chatId)) {
+            throw new NotFoundException("Mensaje no existe en el chat");
+        }
+    }
+
+    @Transactional
+    public void desfijarMensaje(Long chatId, Long mensajeId, Long usuarioId) {
+        Chat chat = chatRepository.buscarChatPorId(chatId);
+        if (chat == null) {
+            throw new NotFoundException("Chat no existe.");
+        }
+
+        validarParticipacion(chat, usuarioId);
+
+        Mensaje mensaje = chatRepository.buscarMensajePorId(mensajeId);
+        if (mensaje == null || !mensaje.getChat().getId().equals(chatId)) {
+            throw new NotFoundException("Mensaje no existe en el chat");
+        }
+    }
+
+    @Transactional
+    public List<MensajeDTO> obtenerMensajesFijados(Long chatId, Long usuarioId) {
+        Chat chat = chatRepository.buscarChatPorId(chatId);
+        if (chat == null) {
+            throw new NotFoundException("Chat no existe.");
+        }
+
+        validarParticipacion(chat, usuarioId);
+
+        return java.util.Collections.emptyList();
+    }
+
     public Usuario resolverUsuarioAutenticado(String principal) {
 
         if (principal == null || principal.isBlank()) {
@@ -564,6 +637,7 @@ public class ChatService {
         } else { // canal o grupo
 
             dto.setNombre(chat.getNombre());
+            dto.setDescripcion(chat.getDescripcion());
             dto.setFotoUrl(chat.getFotoUrl());
             dto.setTipo("GRUPO");
         }
@@ -581,16 +655,7 @@ public class ChatService {
         List<MensajeDTO> respuestas = new ArrayList<>();
 
         for (Mensaje mensaje : mensajes) {
-            MensajeDTO dto = new MensajeDTO();
-            dto.setId(mensaje.getId());
-            dto.setFechaEnvio(mensaje.getFechaEnvio());
-            dto.setTipo(mensaje.getTipo());
-            dto.setEstado(mensaje.getEstado());
-            dto.setContenido(mensaje.getContenido());
-            dto.setEmisorId(mensaje.getEmisor().getId());
-            dto.setEmisorNombre(mensaje.getEmisor().getNombre());
-            dto.setEmisorApellido(mensaje.getEmisor().getApellido());
-            respuestas.add(dto);
+            respuestas.add(mapearMensaje(mensaje));
         }
 
         return respuestas;
@@ -609,8 +674,22 @@ public class ChatService {
         dto.setEmisorId(mensaje.getEmisor().getId());
         dto.setEmisorNombre(mensaje.getEmisor().getNombre());
         dto.setEmisorApellido(mensaje.getEmisor().getApellido());
+        dto.setChatId(mensaje.getChat().getId());
+
+        // Nombre del chat: para grupos usar el nombre del grupo, para directos usar el nombre del emisor
+        Chat chatMensaje = mensaje.getChat();
+        if (chatMensaje.getTipo() == TipoChat.GRUPAL) {
+            dto.setChatNombre(chatMensaje.getNombre());
+        } else {
+            dto.setChatNombre(mensaje.getEmisor().getNombre() + " " + mensaje.getEmisor().getApellido());
+        }
+
         if (mensaje.getParentMessage() != null) {
             dto.setParentId(mensaje.getParentMessage().getId());
+            dto.setParentContenido(mensaje.getParentMessage().getContenido());
+            String parentNombre = mensaje.getParentMessage().getEmisor().getNombre()
+                + " " + mensaje.getParentMessage().getEmisor().getApellido();
+            dto.setParentEmisorNombre(parentNombre.trim());
         }
 
         // cargar reacciones
@@ -675,21 +754,24 @@ public class ChatService {
         return;
     }
 
+    // Las reacciones no necesitan chatId (lo obtiene del mensaje)
+    if (dto.getAccion() != null && "REACCION".equalsIgnoreCase(dto.getAccion())) {
+        if (dto.getMensajeId() == null) {
+            throw new BadRequestException("mensajeId requerido para reacción");
+        }
+        if (dto.getContenido() == null || dto.getContenido().isBlank()) {
+            throw new BadRequestException("contenido requerido para reacción");
+        }
+        agregarReaccion(userId, dto.getMensajeId(), dto.getContenido());
+        return;
+    }
+
     if (dto.getChatId() == null) {
         throw new BadRequestException("chatId requerido");
     }
 
     if (dto.getContenido() == null || dto.getContenido().isBlank()) {
         throw new BadRequestException("contenido requerido");
-    }
-
-    // If action is reaction
-    if (dto.getAccion() != null && "REACCION".equalsIgnoreCase(dto.getAccion())) {
-        if (dto.getMensajeId() == null) {
-            throw new BadRequestException("mensajeId requerido para reacción");
-        }
-        agregarReaccion(userId, dto.getMensajeId(), dto.getContenido());
-        return;
     }
 
     enviarMensaje(

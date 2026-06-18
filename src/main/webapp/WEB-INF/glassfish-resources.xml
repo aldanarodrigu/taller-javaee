@@ -4,13 +4,23 @@
 
     <jdbc-connection-pool name="AppChatPool"
                            res-type="javax.sql.DataSource"
-                           datasource-classname="org.postgresql.ds.PGSimpleDataSource">
-        <property name="User" value="postgres.hnqtqnzvlwiggawffmuu"/>
-        <property name="Password" value="lDDdHsdCriWQODuT"/>
-        <property name="DatabaseName" value="postgres"/>
-        <property name="ServerName" value="aws-1-us-east-1.pooler.supabase.com"/>
-        <property name="PortNumber" value="5432"/>
-        <property name="sslmode" value="require"/>
+                           datasource-classname="org.postgresql.ds.PGSimpleDataSource"
+                           steady-pool-size="2"
+                           max-pool-size="10"
+                           pool-resize-quantity="2"
+                           idle-timeout-in-seconds="300"
+                           is-connection-validation-required="true"
+                           connection-validation-method="auto-commit"
+                           fail-all-connections="false"
+                           wrap-jdbc-objects="false">
+        <property name="serverName" value="aws-1-us-east-1.pooler.supabase.com"/>
+        <property name="portNumber" value="5432"/>
+        <property name="databaseName" value="postgres"/>
+        <property name="user" value="postgres.hnqtqnzvlwiggawffmuu"/>
+        <property name="password" value="lDDdHsdCriWQODuT"/>
+        <property name="ssl" value="true"/>
+        <property name="sslMode" value="require"/>
+        <property name="prepareThreshold" value="-1"/>
     </jdbc-connection-pool>
 
     <jdbc-resource jndi-name="jdbc/appchatDS" pool-name="AppChatPool"/>

@@ -17,6 +17,10 @@ public class MensajeDTO {
     private String emisorNombre;
     private String emisorApellido;
     private Long parentId;
+    private String parentContenido;
+    private String parentEmisorNombre;
+    private Long chatId;
+    private String chatNombre;
     private List<ReaccionDTO> reacciones;
 
     public Long getId() {
@@ -89,6 +93,38 @@ public class MensajeDTO {
 
     public void setParentId(Long parentId) {
         this.parentId = parentId;
+    }
+
+    public String getParentContenido() {
+        return parentContenido;
+    }
+
+    public void setParentContenido(String parentContenido) {
+        this.parentContenido = parentContenido;
+    }
+
+    public String getParentEmisorNombre() {
+        return parentEmisorNombre;
+    }
+
+    public void setParentEmisorNombre(String parentEmisorNombre) {
+        this.parentEmisorNombre = parentEmisorNombre;
+    }
+
+    public Long getChatId() {
+        return chatId;
+    }
+
+    public void setChatId(Long chatId) {
+        this.chatId = chatId;
+    }
+
+    public String getChatNombre() {
+        return chatNombre;
+    }
+
+    public void setChatNombre(String chatNombre) {
+        this.chatNombre = chatNombre;
     }
 
     public List<ReaccionDTO> getReacciones() {
