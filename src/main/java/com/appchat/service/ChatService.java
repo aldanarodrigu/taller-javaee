@@ -671,6 +671,9 @@ public class ChatService {
         if (mensaje == null || !mensaje.getChat().getId().equals(chatId)) {
             throw new NotFoundException("Mensaje no existe en el chat");
         }
+
+        chatRepository.fijarMensaje(chatId, mensajeId, usuarioId);
+        chatRepository.flush();
     }
 
     @Transactional
@@ -686,6 +689,9 @@ public class ChatService {
         if (mensaje == null || !mensaje.getChat().getId().equals(chatId)) {
             throw new NotFoundException("Mensaje no existe en el chat");
         }
+
+        chatRepository.desfijarMensaje(chatId, mensajeId);
+        chatRepository.flush();
     }
 
     @Transactional
@@ -697,7 +703,8 @@ public class ChatService {
 
         validarParticipacion(chat, usuarioId);
 
-        return java.util.Collections.emptyList();
+        List<Mensaje> fijados = chatRepository.buscarMensajesFijados(chatId);
+        return mapearMensajes(fijados);
     }
 
     public Usuario resolverUsuarioAutenticado(String principal) {

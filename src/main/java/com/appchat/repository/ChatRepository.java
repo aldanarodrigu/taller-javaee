@@ -165,7 +165,116 @@ public class ChatRepository {
                 Long.class)
                 .setParameter("chatId", chatId)
                 .getSingleResult();
-    }    
+    }
+
+    // ─── Mensajes fijados (pin) ───────────────────────────────────────────────
+
+    public void asegurarTablaMensajesFijados() {
+        em.createNativeQuery("""
+            CREATE TABLE IF NOT EXISTS mensajes_fijados (
+                chat_id BIGINT NOT NULL,
+                mensaje_id BIGINT NOT NULL,
+                fijado_por BIGINT NULL,
+                fecha_fijado TIMESTAMP NOT NULL DEFAULT NOW(),
+                PRIMARY KEY (chat_id, mensaje_id)
+            )
+        """).executeUpdate();
+
+        // Migración defensiva: si la tabla ya existía con esquema antiguo, agregar columnas faltantes.
+        em.createNativeQuery("ALTER TABLE mensajes_fijados ADD COLUMN IF NOT EXISTS fijado_por BIGINT NULL")
+                .executeUpdate();
+        em.createNativeQuery("ALTER TABLE mensajes_fijados ADD COLUMN IF NOT EXISTS fecha_fijado TIMESTAMP NOT NULL DEFAULT NOW()")
+                .executeUpdate();
+        // Compatibilidad con columnas de esquema legado.
+        em.createNativeQuery("""
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = 'mensajes_fijados'
+                      AND column_name = 'fechafijado'
+                ) THEN
+                    ALTER TABLE mensajes_fijados ALTER COLUMN fechafijado SET DEFAULT NOW();
+                END IF;
+            END $$;
+        """)
+                .executeUpdate();
+    }
+
+    public void fijarMensaje(Long chatId, Long mensajeId, Long usuarioId) {
+        asegurarTablaMensajesFijados();
+        // Compatibilidad con esquemas antiguos sin constraint UNIQUE/PK.
+        em.createNativeQuery("DELETE FROM mensajes_fijados WHERE chat_id = ?1 AND mensaje_id = ?2")
+                .setParameter(1, chatId)
+                .setParameter(2, mensajeId)
+                .executeUpdate();
+
+        try {
+            em.createNativeQuery("""
+                INSERT INTO mensajes_fijados (chat_id, mensaje_id, fijado_por, fecha_fijado)
+                VALUES (?1, ?2, ?3, NOW())
+            """)
+                    .setParameter(1, chatId)
+                    .setParameter(2, mensajeId)
+                    .setParameter(3, usuarioId)
+                    .executeUpdate();
+        } catch (RuntimeException ex) {
+            // Fallback para tablas heredadas con columnas antiguas (fechafijado/usuarioid).
+            try {
+                em.createNativeQuery("""
+                    INSERT INTO mensajes_fijados (chat_id, mensaje_id, fijado_por, fecha_fijado, fechafijado, usuarioid)
+                    VALUES (?1, ?2, ?3, NOW(), NOW(), ?3)
+                """)
+                        .setParameter(1, chatId)
+                        .setParameter(2, mensajeId)
+                        .setParameter(3, usuarioId)
+                        .executeUpdate();
+            } catch (RuntimeException ignored) {
+                em.createNativeQuery("""
+                    INSERT INTO mensajes_fijados (chat_id, mensaje_id, fijado_por, fecha_fijado, fechafijado)
+                    VALUES (?1, ?2, ?3, NOW(), NOW())
+                """)
+                        .setParameter(1, chatId)
+                        .setParameter(2, mensajeId)
+                        .setParameter(3, usuarioId)
+                        .executeUpdate();
+            }
+        }
+    }
+
+    public void desfijarMensaje(Long chatId, Long mensajeId) {
+        asegurarTablaMensajesFijados();
+        em.createNativeQuery("DELETE FROM mensajes_fijados WHERE chat_id = ?1 AND mensaje_id = ?2")
+                .setParameter(1, chatId)
+                .setParameter(2, mensajeId)
+                .executeUpdate();
+    }
+
+    public List<Mensaje> buscarMensajesFijados(Long chatId) {
+        asegurarTablaMensajesFijados();
+        @SuppressWarnings("unchecked")
+        List<Number> ids = em.createNativeQuery(
+            "SELECT mensaje_id FROM mensajes_fijados WHERE chat_id = ?1 ORDER BY fecha_fijado ASC")
+            .setParameter(1, chatId)
+            .getResultList();
+
+        if (ids.isEmpty()) {
+            return java.util.Collections.emptyList();
+        }
+
+        List<Long> mensajeIds = ids.stream().map(Number::longValue).toList();
+        return em.createQuery(
+            "SELECT m FROM Mensaje m "
+            + "JOIN FETCH m.emisor "
+            + "WHERE m.chat.id = :chatId AND m.id IN :ids "
+            + "ORDER BY m.fechaEnvio ASC",
+            Mensaje.class)
+            .setParameter("chatId", chatId)
+            .setParameter("ids", mensajeIds)
+            .getResultList();
+    }
 
     // ─── Reacciones ───────────────────────────────────────────────────────────
 
