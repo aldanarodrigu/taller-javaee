@@ -676,6 +676,7 @@ public class ChatService {
         if (dto.getAccion() != null
                 && "TYPING".equalsIgnoreCase(dto.getAccion())) {
 
+
             if (dto.getChatId() == null) {
                 throw new BadRequestException("chatId requerido");
             }
@@ -758,7 +759,32 @@ public class ChatService {
     }
 
     private void notificarEscribiendo(Long userId, Long chatId) {
-        // TODO: enviar evento TYPING a los participantes conectados
+        Chat chat = chatRepository.buscarChatPorId(chatId);
+
+        if (chat == null) {
+            return;
+        }
+
+        List<Long> destinatarios = obtenerUsuariosDelChat(chat, userId);
+
+        try {
+
+            String json = mapper.writeValueAsString(
+                    java.util.Map.of(
+                            "type", "TYPING",
+                            "chatId", chatId,
+                            "userId", userId
+                    )
+            );
+
+            for (Long destino : destinatarios) {
+                chatHub.enviarAUsuario(destino, json);
+            }
+
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+
     }
 
     @Transactional
