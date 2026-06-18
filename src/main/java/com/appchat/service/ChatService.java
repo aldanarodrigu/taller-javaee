@@ -6,6 +6,7 @@ import com.appchat.dto.ChatMiembrosRequestDTO;
 import com.appchat.dto.ChatRolGrupoRequestDTO;
 import com.appchat.dto.ChatResumenDTO;
 import com.appchat.dto.HistorialMensajesDTO;
+import com.appchat.dto.AdjuntoUploadRequestDTO;
 import com.appchat.dto.MensajeDTO;
 import com.appchat.dto.MensajeWSDTO;
 import com.appchat.model.Chat;
@@ -33,16 +34,26 @@ import jakarta.ws.rs.ForbiddenException;
 import jakarta.ws.rs.NotAuthorizedException;
 import jakarta.ws.rs.NotFoundException;
 import jakarta.ws.rs.WebApplicationException;
+import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 
 @ApplicationScoped
 @Transactional(Transactional.TxType.REQUIRED)
 public class ChatService {
+
+    private static final long MAX_ADJUNTO_BYTES = 10L * 1024L * 1024L;
+    private static final Path ADJUNTOS_DIR = Paths.get(System.getProperty("user.home"), ".appchat", "uploads");
 
     @Inject
     private ChatRepository chatRepository;
@@ -108,6 +119,151 @@ public class ChatService {
         notificarChat(chat, mensaje, dto);
         
         return dto;
+    }
+
+    public static class AdjuntoDescarga {
+        public final byte[] bytes;
+        public final String mimeType;
+        public final String fileName;
+        public final boolean inline;
+
+        public AdjuntoDescarga(byte[] bytes, String mimeType, String fileName, boolean inline) {
+            this.bytes = bytes;
+            this.mimeType = mimeType;
+            this.fileName = fileName;
+            this.inline = inline;
+        }
+    }
+
+    @Transactional
+    public MensajeDTO enviarAdjunto(Long chatId, Long emisorId, AdjuntoUploadRequestDTO request) {
+        if (request == null) {
+            throw new BadRequestException("Body requerido");
+        }
+        if (request.getNombre() == null || request.getNombre().isBlank()) {
+            throw new BadRequestException("nombre requerido");
+        }
+        if (request.getContenidoBase64() == null || request.getContenidoBase64().isBlank()) {
+            throw new BadRequestException("contenidoBase64 requerido");
+        }
+
+        String mimeType = normalizarMime(request.getMimeType());
+        byte[] bytes = decodeBase64(request.getContenidoBase64());
+        if (bytes.length == 0) {
+            throw new BadRequestException("Adjunto vacío");
+        }
+        if (bytes.length > MAX_ADJUNTO_BYTES) {
+            throw new BadRequestException("Adjunto excede 10MB");
+        }
+
+        Chat chat = chatRepository.buscarChatPorId(chatId);
+        if (chat == null) {
+            throw new NotFoundException("Chat no existe.");
+        }
+        validarParticipacion(chat, emisorId);
+
+        Usuario emisor = usuarioRepository.buscarPorId(emisorId);
+        if (emisor == null) {
+            throw new NotFoundException("Usuario no existe.");
+        }
+
+        Mensaje mensaje = new Mensaje();
+        mensaje.setChat(chat);
+        mensaje.setEmisor(emisor);
+        mensaje.setEstado(EstadoMensaje.ENVIADO);
+
+        if (request.getParentId() != null) {
+            Mensaje parent = chatRepository.buscarMensajePorId(request.getParentId());
+            if (parent == null) {
+                throw new NotFoundException("Mensaje padre no encontrado");
+            }
+            if (!parent.getChat().getId().equals(chatId)) {
+                throw new BadRequestException("parentId no pertenece al mismo chat");
+            }
+            mensaje.setParentMessage(parent);
+        }
+
+        TipoMensaje tipoAdjunto;
+        if (mimeType.startsWith("image/")) {
+            tipoAdjunto = TipoMensaje.IMAGEN;
+        } else if (mimeType.startsWith("video/")) {
+            tipoAdjunto = TipoMensaje.VIDEO;
+        } else {
+            tipoAdjunto = TipoMensaje.ARCHIVO;
+        }
+        mensaje.setTipo(tipoAdjunto);
+
+        String nombreOriginal = sanitizeFileName(request.getNombre());
+        String extension = obtenerExtension(nombreOriginal);
+        String storageName = UUID.randomUUID() + extension;
+        Path ruta = ADJUNTOS_DIR.resolve(storageName).normalize();
+
+        try {
+            Files.createDirectories(ADJUNTOS_DIR);
+            Files.write(ruta, bytes);
+        } catch (Exception e) {
+            throw new WebApplicationException("No se pudo guardar adjunto", Response.Status.INTERNAL_SERVER_ERROR);
+        }
+
+        try {
+            String jsonMeta = mapper.writeValueAsString(Map.of(
+                    "storageName", storageName,
+                    "originalName", nombreOriginal,
+                    "mimeType", mimeType,
+                    "size", bytes.length
+            ));
+            mensaje.setContenido(jsonMeta);
+        } catch (Exception e) {
+            try {
+                Files.deleteIfExists(ruta);
+            } catch (Exception ignored) {
+            }
+            throw new WebApplicationException("No se pudo serializar metadata de adjunto", Response.Status.INTERNAL_SERVER_ERROR);
+        }
+
+        chatRepository.guardarMensaje(mensaje);
+        chatRepository.flush();
+
+        MensajeDTO dto = mapearMensaje(mensaje);
+        notificarChat(chat, mensaje, dto);
+        return dto;
+    }
+
+    @Transactional
+    public AdjuntoDescarga obtenerAdjunto(Long mensajeId, Long usuarioId) {
+        Mensaje mensaje = chatRepository.buscarMensajePorId(mensajeId);
+        if (mensaje == null) {
+            throw new NotFoundException("Adjunto no encontrado");
+        }
+        validarParticipacion(mensaje.getChat(), usuarioId);
+
+        if (mensaje.getTipo() != TipoMensaje.IMAGEN && mensaje.getTipo() != TipoMensaje.ARCHIVO && mensaje.getTipo() != TipoMensaje.VIDEO) {
+            throw new NotFoundException("El mensaje no tiene adjunto");
+        }
+
+        AdjuntoMeta meta = parseAdjuntoMeta(mensaje.getContenido());
+        if (meta == null || meta.storageName == null || meta.storageName.isBlank()) {
+            throw new NotFoundException("Metadata de adjunto inválida");
+        }
+
+        Path ruta = ADJUNTOS_DIR.resolve(meta.storageName).normalize();
+        if (!ruta.startsWith(ADJUNTOS_DIR.normalize())) {
+            throw new WebApplicationException("Ruta de adjunto inválida", Response.Status.BAD_REQUEST);
+        }
+
+        try {
+            byte[] bytes = Files.readAllBytes(ruta);
+            String mime = meta.mimeType == null || meta.mimeType.isBlank()
+                    ? MediaType.APPLICATION_OCTET_STREAM
+                    : meta.mimeType;
+            String nombre = meta.originalName == null || meta.originalName.isBlank()
+                    ? "adjunto"
+                    : meta.originalName;
+            boolean inline = mensaje.getTipo() == TipoMensaje.IMAGEN || mensaje.getTipo() == TipoMensaje.VIDEO;
+            return new AdjuntoDescarga(bytes, mime, nombre, inline);
+        } catch (Exception e) {
+            throw new NotFoundException("Archivo adjunto no disponible");
+        }
     }
 
     @Transactional(Transactional.TxType.NOT_SUPPORTED)
@@ -644,7 +800,15 @@ public class ChatService {
 
         Mensaje ultimo = chatRepository.buscarUltimoMensaje(chat.getId());
         if (ultimo != null) {
-            dto.setUltimoMensajeContenido(ultimo.getContenido());
+            if (ultimo.getTipo() == TipoMensaje.IMAGEN) {
+                dto.setUltimoMensajeContenido("Ha enviado una imagen");
+            } else if (ultimo.getTipo() == TipoMensaje.VIDEO) {
+                dto.setUltimoMensajeContenido("Ha enviado un video");
+            } else if (ultimo.getTipo() == TipoMensaje.ARCHIVO) {
+                dto.setUltimoMensajeContenido("Ha enviado un archivo adjunto");
+            } else {
+                dto.setUltimoMensajeContenido(ultimo.getContenido());
+            }
             dto.setUltimoMensajeFecha(ultimo.getFechaEnvio());
         }
 
@@ -686,10 +850,28 @@ public class ChatService {
 
         if (mensaje.getParentMessage() != null) {
             dto.setParentId(mensaje.getParentMessage().getId());
-            dto.setParentContenido(mensaje.getParentMessage().getContenido());
+            if (mensaje.getParentMessage().getTipo() == TipoMensaje.IMAGEN || mensaje.getParentMessage().getTipo() == TipoMensaje.ARCHIVO) {
+                AdjuntoMeta parentMeta = parseAdjuntoMeta(mensaje.getParentMessage().getContenido());
+                dto.setParentContenido(parentMeta != null && parentMeta.originalName != null ? parentMeta.originalName : "Adjunto");
+            } else {
+                dto.setParentContenido(mensaje.getParentMessage().getContenido());
+            }
             String parentNombre = mensaje.getParentMessage().getEmisor().getNombre()
                 + " " + mensaje.getParentMessage().getEmisor().getApellido();
             dto.setParentEmisorNombre(parentNombre.trim());
+        }
+
+        if (mensaje.getTipo() == TipoMensaje.IMAGEN || mensaje.getTipo() == TipoMensaje.ARCHIVO || mensaje.getTipo() == TipoMensaje.VIDEO) {
+            AdjuntoMeta meta = parseAdjuntoMeta(mensaje.getContenido());
+            if (meta != null) {
+                dto.setAdjuntoNombre(meta.originalName);
+                dto.setAdjuntoMime(meta.mimeType);
+                dto.setAdjuntoTamano(meta.size);
+                dto.setAdjuntoUrl("/appchat/api/chats/adjuntos/" + mensaje.getId());
+                if (meta.originalName != null && !meta.originalName.isBlank()) {
+                    dto.setContenido(meta.originalName);
+                }
+            }
         }
 
         // cargar reacciones
@@ -896,6 +1078,61 @@ public class ChatService {
 
     private boolean esAcuseLecturaPorMensaje(MensajeWSDTO dto) {
         return dto.getAccion() != null && "LEIDO_MENSAJE".equalsIgnoreCase(dto.getAccion());
+    }
+
+    private static class AdjuntoMeta {
+        public String storageName;
+        public String originalName;
+        public String mimeType;
+        public Long size;
+    }
+
+    private AdjuntoMeta parseAdjuntoMeta(String contenido) {
+        if (contenido == null || contenido.isBlank()) {
+            return null;
+        }
+        try {
+            return mapper.readValue(contenido, AdjuntoMeta.class);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private byte[] decodeBase64(String raw) {
+        String valor = raw.trim();
+        int comma = valor.indexOf(',');
+        if (valor.startsWith("data:") && comma > 0) {
+            valor = valor.substring(comma + 1);
+        }
+        try {
+            return Base64.getDecoder().decode(valor);
+        } catch (Exception e) {
+            throw new BadRequestException("contenidoBase64 inválido");
+        }
+    }
+
+    private String normalizarMime(String mimeType) {
+        if (mimeType == null || mimeType.isBlank()) {
+            return MediaType.APPLICATION_OCTET_STREAM;
+        }
+        return mimeType.trim().toLowerCase();
+    }
+
+    private String sanitizeFileName(String name) {
+        String cleaned = name.replace("\\", "_").replace("/", "_").trim();
+        if (cleaned.isBlank()) {
+            return "archivo";
+        }
+        return cleaned.length() > 180 ? cleaned.substring(cleaned.length() - 180) : cleaned;
+    }
+
+    private String obtenerExtension(String nombre) {
+        int idx = nombre.lastIndexOf('.');
+        if (idx < 0 || idx == nombre.length() - 1) {
+            return "";
+        }
+        String ext = nombre.substring(idx);
+        return ext.length() > 12 ? "" : ext;
     }
     
 }

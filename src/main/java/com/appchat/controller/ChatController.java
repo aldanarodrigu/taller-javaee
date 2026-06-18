@@ -1,8 +1,10 @@
 package com.appchat.controller;
 
+import com.appchat.dto.AdjuntoUploadRequestDTO;
 import com.appchat.dto.ChatDirectoRequestDTO;
 import com.appchat.dto.ChatResumenDTO;
 import com.appchat.dto.HistorialMensajesDTO;
+import com.appchat.dto.MensajeDTO;
 import com.appchat.service.ChatService;
 
 import jakarta.inject.Inject;
@@ -60,6 +62,28 @@ public class ChatController {
         ChatResumenDTO chat = service.crearOAbrirChatDirecto(usuarioId, request.getUsuarioDestinoId(), request.getComunidadId());
 
         return Response.status(Response.Status.CREATED).entity(chat).build();
+    }
+
+    @POST
+    @Path("/{id}/adjuntos")
+    public Response subirAdjunto(@PathParam("id") Long chatId, @Valid AdjuntoUploadRequestDTO request) {
+        Long usuarioId = getUsuarioId();
+        MensajeDTO dto = service.enviarAdjunto(chatId, usuarioId, request);
+        return Response.status(Response.Status.CREATED).entity(dto).build();
+    }
+
+    @GET
+    @Path("/adjuntos/{mensajeId}")
+    @Produces(MediaType.APPLICATION_OCTET_STREAM)
+    public Response descargarAdjunto(@PathParam("mensajeId") Long mensajeId) {
+        Long usuarioId = getUsuarioId();
+        ChatService.AdjuntoDescarga descarga = service.obtenerAdjunto(mensajeId, usuarioId);
+
+        String disposition = descarga.inline ? "inline" : "attachment";
+        return Response.ok(descarga.bytes, descarga.mimeType)
+                .header("Content-Disposition", disposition + "; filename=\"" + descarga.fileName + "\"")
+                .header("Cache-Control", "private, max-age=120")
+                .build();
     }
 
     private Long getUsuarioId() {
