@@ -14,8 +14,14 @@ import io.jsonwebtoken.Jwts;
 @Priority(Priorities.AUTHENTICATION)
 public class JwtFilter implements ContainerRequestFilter {
 
+
+
     @Override
     public void filter(ContainerRequestContext requestContext) {
+
+        if ("OPTIONS".equalsIgnoreCase(requestContext.getMethod())) {
+            return;
+        }
 
         String path = requestContext.getUriInfo().getPath();
 
