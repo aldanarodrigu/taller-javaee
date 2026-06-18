@@ -90,7 +90,7 @@ public class Comunidad {
         return miembros; 
     }
 
- public void setFechaCreacion(LocalDateTime fechaCreacion) {
-    this.fechaCreacion = fechaCreacion;
-}
+    public void setFechaCreacion(LocalDateTime fechaCreacion) {
+       this.fechaCreacion = fechaCreacion;
+   }
 }

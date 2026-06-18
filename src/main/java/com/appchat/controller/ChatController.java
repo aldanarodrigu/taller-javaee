@@ -27,10 +27,11 @@ public class ChatController {
     private ContainerRequestContext requestContext;
 
     @GET
-    public Response listarChats() {
+    @Path("/comunidad/{comunidadId}")
+    public Response listarChats(@PathParam("comunidadId") Long comunidadId) {
         Long usuarioId = getUsuarioId();
 
-        List<ChatResumenDTO> chats = service.listarChatsDelUsuario(usuarioId);
+        List<ChatResumenDTO> chats = service.listarChatsDeComunidad(usuarioId, comunidadId);
         
         return Response.ok(chats).build();
     }
