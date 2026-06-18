@@ -95,6 +95,7 @@ public class ChatGrupoController {
 
     @POST
     @Path("/{id}/mensajes/{mensajeId}/pin")
+    @Consumes(MediaType.WILDCARD)
     public Response fijarMensaje(@PathParam("id") Long chatId, @PathParam("mensajeId") Long mensajeId) {
         Long usuarioId = getUsuarioId();
 
@@ -105,6 +106,7 @@ public class ChatGrupoController {
 
     @DELETE
     @Path("/{id}/mensajes/{mensajeId}/pin")
+    @Consumes(MediaType.WILDCARD)
     public Response desfijarMensaje(@PathParam("id") Long chatId, @PathParam("mensajeId") Long mensajeId) {
         Long usuarioId = getUsuarioId();
 
