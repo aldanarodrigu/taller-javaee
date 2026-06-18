@@ -8,6 +8,9 @@ import com.appchat.model.enums.RolComunidad;
 import com.appchat.repository.ComunidadRepository;
 import com.appchat.dto.ComunidadResumenDTO;
 import com.appchat.dto.ComunidadDetalleDTO;
+import com.appchat.dto.InvitacionDTO;
+
+
 import com.appchat.model.InvitacionComunidad;
 import com.appchat.model.MiembroComunidad;
 import com.appchat.model.enums.EstadoInvitacion;
@@ -293,5 +296,52 @@ public class ComunidadService {
     }
     return result;
 }
+
+    public List<Map<String, Object>> listarInvitacionesPendientes(Long userId) {
+        // Placeholder hasta implementar entidad de invitaciones persistente.
+        return new ArrayList<>();
+    }
+
+    public void aceptarInvitacion(Long invitacionId, Long userId) {
+        // Placeholder para mantener compatibilidad de API hasta implementar invitaciones.
+    }
+
+    public void rechazarInvitacion(Long invitacionId, Long userId) {
+        // Placeholder para mantener compatibilidad de API hasta implementar invitaciones.
+    }
+
+    @Transactional
+    public void salirComunidad(Long comunidadId, Long userId) {
+        Comunidad comunidad = comunidadRepository.buscarPorId(comunidadId);
+        if (comunidad == null) {
+            throw new NotFoundException("Comunidad no encontrada");
+        }
+
+        if (comunidad.esAdmin(userId)) {
+            throw new ForbiddenException("El owner no puede salir de la comunidad");
+        }
+
+        int eliminados = comunidadRepository.eliminarMiembro(comunidadId, userId);
+        if (eliminados == 0) {
+            throw new NotFoundException("El usuario no pertenece a la comunidad");
+        }
+    }
+
+    @Transactional
+    public void eliminarMiembroComunidad(Long comunidadId, Long userIdObjetivo, Long userIdSolicitante) {
+        Comunidad comunidad = comunidadRepository.buscarPorId(comunidadId);
+        if (comunidad == null) {
+            throw new NotFoundException("Comunidad no encontrada");
+        }
+
+        if (!comunidad.esAdmin(userIdSolicitante)) {
+            throw new ForbiddenException("No autorizado");
+        }
+
+        int eliminados = comunidadRepository.eliminarMiembro(comunidadId, userIdObjetivo);
+        if (eliminados == 0) {
+            throw new NotFoundException("El usuario no pertenece a la comunidad");
+        }
+    }
     
 }
