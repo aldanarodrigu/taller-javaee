@@ -6,6 +6,7 @@ import com.appchat.dto.ChatMiembrosRequestDTO;
 import com.appchat.dto.ChatRolGrupoRequestDTO;
 import com.appchat.dto.ChatResumenDTO;
 import com.appchat.dto.HistorialMensajesDTO;
+import com.appchat.dto.AdjuntoUploadRequestDTO;
 import com.appchat.dto.MensajeDTO;
 import com.appchat.dto.MensajeWSDTO;
 import com.appchat.dto.MensajeFijadoDTO;
@@ -35,16 +36,26 @@ import jakarta.ws.rs.ForbiddenException;
 import jakarta.ws.rs.NotAuthorizedException;
 import jakarta.ws.rs.NotFoundException;
 import jakarta.ws.rs.WebApplicationException;
+import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 
 @ApplicationScoped
 @Transactional(Transactional.TxType.REQUIRED)
 public class ChatService {
+
+    private static final long MAX_ADJUNTO_BYTES = 10L * 1024L * 1024L;
+    private static final Path ADJUNTOS_DIR = Paths.get(System.getProperty("user.home"), ".appchat", "uploads");
 
     @Inject
     private ChatRepository chatRepository;
@@ -115,48 +126,175 @@ public class ChatService {
         return dto;
     }
 
+    public static class AdjuntoDescarga {
+        public final byte[] bytes;
+        public final String mimeType;
+        public final String fileName;
+        public final boolean inline;
+
+        public AdjuntoDescarga(byte[] bytes, String mimeType, String fileName, boolean inline) {
+            this.bytes = bytes;
+            this.mimeType = mimeType;
+            this.fileName = fileName;
+            this.inline = inline;
+        }
+    }
+
     @Transactional
-    public com.appchat.dto.ReaccionDTO agregarReaccion(Long usuarioId, Long mensajeId, String tipo) {
-        Mensaje mensaje = chatRepository.buscarMensajePorId(mensajeId);
-        if (mensaje == null) {
-            throw new NotFoundException("Mensaje no encontrado");
+    public MensajeDTO enviarAdjunto(Long chatId, Long emisorId, AdjuntoUploadRequestDTO request) {
+        if (request == null) {
+            throw new BadRequestException("Body requerido");
+        }
+        if (request.getNombre() == null || request.getNombre().isBlank()) {
+            throw new BadRequestException("nombre requerido");
+        }
+        if (request.getContenidoBase64() == null || request.getContenidoBase64().isBlank()) {
+            throw new BadRequestException("contenidoBase64 requerido");
         }
 
-        validarParticipacion(mensaje.getChat(), usuarioId);
+        String mimeType = normalizarMime(request.getMimeType());
+        byte[] bytes = decodeBase64(request.getContenidoBase64());
+        if (bytes.length == 0) {
+            throw new BadRequestException("Adjunto vacío");
+        }
+        if (bytes.length > MAX_ADJUNTO_BYTES) {
+            throw new BadRequestException("Adjunto excede 10MB");
+        }
 
-        com.appchat.model.Reaccion reaccion = new com.appchat.model.Reaccion();
-        reaccion.setMensaje(mensaje);
-        reaccion.setTipo(tipo);
-        reaccion.setUsuario(usuarioRepository.buscarPorId(usuarioId));
+        Chat chat = chatRepository.buscarChatPorId(chatId);
+        if (chat == null) {
+            throw new NotFoundException("Chat no existe.");
+        }
+        validarParticipacion(chat, emisorId);
 
-        chatRepository.guardarReaccion(reaccion);
+        Usuario emisor = usuarioRepository.buscarPorId(emisorId);
+        if (emisor == null) {
+            throw new NotFoundException("Usuario no existe.");
+        }
+
+        Mensaje mensaje = new Mensaje();
+        mensaje.setChat(chat);
+        mensaje.setEmisor(emisor);
+        mensaje.setEstado(EstadoMensaje.ENVIADO);
+
+        if (request.getParentId() != null) {
+            Mensaje parent = chatRepository.buscarMensajePorId(request.getParentId());
+            if (parent == null) {
+                throw new NotFoundException("Mensaje padre no encontrado");
+            }
+            if (!parent.getChat().getId().equals(chatId)) {
+                throw new BadRequestException("parentId no pertenece al mismo chat");
+            }
+            mensaje.setParentMessage(parent);
+        }
+
+        TipoMensaje tipoAdjunto;
+        if (mimeType.startsWith("image/")) {
+            tipoAdjunto = TipoMensaje.IMAGEN;
+        } else if (mimeType.startsWith("video/")) {
+            tipoAdjunto = TipoMensaje.VIDEO;
+        } else {
+            tipoAdjunto = TipoMensaje.ARCHIVO;
+        }
+        mensaje.setTipo(tipoAdjunto);
+
+        String nombreOriginal = sanitizeFileName(request.getNombre());
+        String extension = obtenerExtension(nombreOriginal);
+        String storageName = UUID.randomUUID() + extension;
+        Path ruta = ADJUNTOS_DIR.resolve(storageName).normalize();
+
+        try {
+            Files.createDirectories(ADJUNTOS_DIR);
+            Files.write(ruta, bytes);
+        } catch (Exception e) {
+            throw new WebApplicationException("No se pudo guardar adjunto", Response.Status.INTERNAL_SERVER_ERROR);
+        }
+
+        try {
+            String jsonMeta = mapper.writeValueAsString(Map.of(
+                    "storageName", storageName,
+                    "originalName", nombreOriginal,
+                    "mimeType", mimeType,
+                    "size", bytes.length
+            ));
+            mensaje.setContenido(jsonMeta);
+        } catch (Exception e) {
+            try {
+                Files.deleteIfExists(ruta);
+            } catch (Exception ignored) {
+            }
+            throw new WebApplicationException("No se pudo serializar metadata de adjunto", Response.Status.INTERNAL_SERVER_ERROR);
+        }
+
+        chatRepository.guardarMensaje(mensaje);
         chatRepository.flush();
 
-        com.appchat.dto.ReaccionDTO dto = new com.appchat.dto.ReaccionDTO();
-        dto.setId(reaccion.getId());
-        dto.setTipo(reaccion.getTipo());
-        dto.setUsuarioId(reaccion.getUsuario().getId());
-        dto.setUsuarioNombre(reaccion.getUsuario().getNombre());
-        dto.setUsuarioApellido(reaccion.getUsuario().getApellido());
-        dto.setFecha(reaccion.getFecha());
+        MensajeDTO dto = mapearMensaje(mensaje);
+        notificarChat(chat, mensaje, dto);
+        return dto;
+    }
 
-        // Notificar a participantes conectados
-        try {
-            String json = mapper.writeValueAsString(java.util.Map.of("type", "REACTION_ADDED", "messageId", mensajeId, "reaction", dto));
-            for (Long userId : obtenerUsuariosDelChat(mensaje.getChat(), mensaje.getEmisor().getId())) {
-                if (!chatHub.obtenerSesiones(userId).isEmpty()) {
-                    chatHub.enviarAUsuario(userId, json);
-                }
-            }
-            // also notify emisor
-            if (!chatHub.obtenerSesiones(mensaje.getEmisor().getId()).isEmpty()) {
-                chatHub.enviarAUsuario(mensaje.getEmisor().getId(), json);
-            }
-        } catch (Exception e) {
-            throw new RuntimeException("Error serializando reacción", e);
+    @Transactional
+    public AdjuntoDescarga obtenerAdjunto(Long mensajeId, Long usuarioId) {
+        Mensaje mensaje = chatRepository.buscarMensajePorId(mensajeId);
+        if (mensaje == null) {
+            throw new NotFoundException("Adjunto no encontrado");
+        }
+        validarParticipacion(mensaje.getChat(), usuarioId);
+
+        if (mensaje.getTipo() != TipoMensaje.IMAGEN && mensaje.getTipo() != TipoMensaje.ARCHIVO && mensaje.getTipo() != TipoMensaje.VIDEO) {
+            throw new NotFoundException("El mensaje no tiene adjunto");
         }
 
-        return dto;
+        AdjuntoMeta meta = parseAdjuntoMeta(mensaje.getContenido());
+        if (meta == null || meta.storageName == null || meta.storageName.isBlank()) {
+            throw new NotFoundException("Metadata de adjunto inválida");
+        }
+
+        Path ruta = ADJUNTOS_DIR.resolve(meta.storageName).normalize();
+        if (!ruta.startsWith(ADJUNTOS_DIR.normalize())) {
+            throw new WebApplicationException("Ruta de adjunto inválida", Response.Status.BAD_REQUEST);
+        }
+
+        try {
+            byte[] bytes = Files.readAllBytes(ruta);
+            String mime = meta.mimeType == null || meta.mimeType.isBlank()
+                    ? MediaType.APPLICATION_OCTET_STREAM
+                    : meta.mimeType;
+            String nombre = meta.originalName == null || meta.originalName.isBlank()
+                    ? "adjunto"
+                    : meta.originalName;
+            boolean inline = mensaje.getTipo() == TipoMensaje.IMAGEN || mensaje.getTipo() == TipoMensaje.VIDEO;
+            return new AdjuntoDescarga(bytes, mime, nombre, inline);
+        } catch (Exception e) {
+            throw new NotFoundException("Archivo adjunto no disponible");
+        }
+    }
+
+    @Transactional(Transactional.TxType.NOT_SUPPORTED)
+    public com.appchat.dto.ReaccionDTO agregarReaccion(Long usuarioId, Long mensajeId, String tipo) {
+        // chatRepository.procesarReaccion usa REQUIRES_NEW → transacción propia que commitea antes de retornar
+        com.appchat.repository.ChatRepository.ReaccionResultado resultado =
+                chatRepository.procesarReaccion(usuarioId, mensajeId, tipo);
+
+        // En este punto la transacción ya commitó. Enviamos WS de forma segura.
+        String eventType = resultado.removido ? "REACTION_REMOVED" : "REACTION_ADDED";
+        try {
+            String json = mapper.writeValueAsString(java.util.Map.of(
+                "type", eventType,
+                "messageId", mensajeId,
+                "chatId", resultado.chatId,
+                "reaction", resultado.dto
+            ));
+            for (Long uid : resultado.participanteIds) {
+                if (!chatHub.obtenerSesiones(uid).isEmpty()) {
+                    chatHub.enviarAUsuario(uid, json);
+                }
+            }
+        } catch (Exception e) {
+            // El WS no afecta la persistencia (ya commitada)
+        }
+        return resultado.dto;
     }
     
     private void notificarChat(Chat chat, Mensaje mensaje, MensajeDTO dtoMensaje) {
@@ -178,18 +316,18 @@ public class ChatService {
             }
         }
 
+        // Siempre notificar al emisor con el estado actual del mensaje
         if (entregado && mensaje.getEstado() == EstadoMensaje.ENVIADO) {
             mensaje.setEstado(EstadoMensaje.ENTREGADO);
             chatRepository.flush();
+        }
 
-            MensajeDTO dtoEntregado = mapearMensaje(mensaje);
-
-            try {
-                String jsonEntregado = mapper.writeValueAsString(dtoEntregado);
-                chatHub.enviarAUsuario(mensaje.getEmisor().getId(), jsonEntregado);
-            } catch (Exception e) {
-                throw new RuntimeException("Error serializando mensaje", e);
-            }
+        try {
+            MensajeDTO dtoEmisor = mapearMensaje(mensaje);
+            String jsonEmisor = mapper.writeValueAsString(dtoEmisor);
+            chatHub.enviarAUsuario(mensaje.getEmisor().getId(), jsonEmisor);
+        } catch (Exception e) {
+            // No lanzar excepción: el mensaje ya fue guardado, solo falla la notificación
         }
     }
     
@@ -211,6 +349,25 @@ public class ChatService {
 
         return respuestas;
     }
+
+    @Transactional
+    public List<ChatResumenDTO> listarChatsDelUsuarioEnComunidad(Long usuarioId, Long comunidadId) {
+        verificarUsuarioExiste(usuarioId);
+
+        Comunidad comunidad = comunidadService.buscarPorId(comunidadId);
+        if (comunidad == null) {
+            throw new NotFoundException("Comunidad no existe");
+        }
+
+        List<Chat> chats = chatRepository.listarChatsDeUsuarioEnComunidad(usuarioId, comunidadId);
+        List<ChatResumenDTO> respuestas = new ArrayList<>();
+
+        for (Chat chat : chats) {
+            respuestas.add(mapearResumen(chat, usuarioId));
+        }
+
+        return respuestas;
+    }
     
     @Transactional
     public HistorialMensajesDTO obtenerHistorialMensajes(Long chatId, Long usuarioId, int page, int size) {
@@ -222,10 +379,19 @@ public class ChatService {
 
         int paginaNormalizada = Math.max(page, 0);
         int tamanoNormalizado = size <= 0 ? 20 : size;
-        int offset = paginaNormalizada * tamanoNormalizado;
-
-        List<Mensaje> mensajes = chatRepository.buscarMensajesPagina(chatId, offset, tamanoNormalizado);
         long total = chatRepository.contarMensajes(chatId);
+
+        // La pagina 0 devuelve los mensajes mas recientes para evitar que
+        // los mensajes nuevos "desaparezcan" al refrescar historial.
+        long inicioLong = Math.max(total - ((long) tamanoNormalizado * (paginaNormalizada + 1)), 0);
+        long finLong = Math.max(total - ((long) tamanoNormalizado * paginaNormalizada), 0);
+
+        int inicio = (int) inicioLong;
+        int limite = (int) Math.max(finLong - inicioLong, 0);
+
+        List<Mensaje> mensajes = limite > 0
+                ? chatRepository.buscarMensajesPagina(chatId, inicio, limite)
+                : java.util.Collections.emptyList();
 
         HistorialMensajesDTO respuesta = new HistorialMensajesDTO();
         respuesta.setMensajes(mapearMensajes(mensajes));
@@ -475,6 +641,72 @@ public class ChatService {
         chatRepository.flush();
     }
 
+    @Transactional
+    public void eliminarGrupo(Long chatId, Long usuarioSolicitanteId) {
+        Chat chat = chatRepository.buscarChatPorId(chatId);
+        if (chat == null) {
+            throw new NotFoundException("Chat no existe.");
+        }
+
+        if (chat.getTipo() != TipoChat.GRUPAL) {
+            throw new BadRequestException("Solo se pueden eliminar grupos");
+        }
+
+        validarAdminGrupo(chat, usuarioSolicitanteId);
+
+        chatRepository.eliminarChat(chat);
+        chatRepository.flush();
+    }
+
+    @Transactional
+    public void fijarMensaje(Long chatId, Long mensajeId, Long usuarioId) {
+        Chat chat = chatRepository.buscarChatPorId(chatId);
+        if (chat == null) {
+            throw new NotFoundException("Chat no existe.");
+        }
+
+        validarParticipacion(chat, usuarioId);
+
+        Mensaje mensaje = chatRepository.buscarMensajePorId(mensajeId);
+        if (mensaje == null || !mensaje.getChat().getId().equals(chatId)) {
+            throw new NotFoundException("Mensaje no existe en el chat");
+        }
+
+        chatRepository.fijarMensaje(chatId, mensajeId, usuarioId);
+        chatRepository.flush();
+    }
+
+    @Transactional
+    public void desfijarMensaje(Long chatId, Long mensajeId, Long usuarioId) {
+        Chat chat = chatRepository.buscarChatPorId(chatId);
+        if (chat == null) {
+            throw new NotFoundException("Chat no existe.");
+        }
+
+        validarParticipacion(chat, usuarioId);
+
+        Mensaje mensaje = chatRepository.buscarMensajePorId(mensajeId);
+        if (mensaje == null || !mensaje.getChat().getId().equals(chatId)) {
+            throw new NotFoundException("Mensaje no existe en el chat");
+        }
+
+        chatRepository.desfijarMensaje(chatId, mensajeId);
+        chatRepository.flush();
+    }
+
+    @Transactional
+    public List<MensajeDTO> obtenerMensajesFijados(Long chatId, Long usuarioId) {
+        Chat chat = chatRepository.buscarChatPorId(chatId);
+        if (chat == null) {
+            throw new NotFoundException("Chat no existe.");
+        }
+
+        validarParticipacion(chat, usuarioId);
+
+        List<Mensaje> fijados = chatRepository.buscarMensajesFijados(chatId);
+        return mapearMensajes(fijados);
+    }
+
     public Usuario resolverUsuarioAutenticado(String principal) {
 
         if (principal == null || principal.isBlank()) {
@@ -574,13 +806,22 @@ public class ChatService {
         } else { // canal o grupo
 
             dto.setNombre(chat.getNombre());
+            dto.setDescripcion(chat.getDescripcion());
             dto.setFotoUrl(chat.getFotoUrl());
             dto.setTipo("GRUPO");
         }
 
         Mensaje ultimo = chatRepository.buscarUltimoMensaje(chat.getId());
         if (ultimo != null) {
-            dto.setUltimoMensajeContenido(ultimo.getContenido());
+            if (ultimo.getTipo() == TipoMensaje.IMAGEN) {
+                dto.setUltimoMensajeContenido("Ha enviado una imagen");
+            } else if (ultimo.getTipo() == TipoMensaje.VIDEO) {
+                dto.setUltimoMensajeContenido("Ha enviado un video");
+            } else if (ultimo.getTipo() == TipoMensaje.ARCHIVO) {
+                dto.setUltimoMensajeContenido("Ha enviado un archivo adjunto");
+            } else {
+                dto.setUltimoMensajeContenido(ultimo.getContenido());
+            }
             dto.setUltimoMensajeFecha(ultimo.getFechaEnvio());
         }
 
@@ -591,16 +832,7 @@ public class ChatService {
         List<MensajeDTO> respuestas = new ArrayList<>();
 
         for (Mensaje mensaje : mensajes) {
-            MensajeDTO dto = new MensajeDTO();
-            dto.setId(mensaje.getId());
-            dto.setFechaEnvio(mensaje.getFechaEnvio());
-            dto.setTipo(mensaje.getTipo());
-            dto.setEstado(mensaje.getEstado());
-            dto.setContenido(mensaje.getContenido());
-            dto.setEmisorId(mensaje.getEmisor().getId());
-            dto.setEmisorNombre(mensaje.getEmisor().getNombre());
-            dto.setEmisorApellido(mensaje.getEmisor().getApellido());
-            respuestas.add(dto);
+            respuestas.add(mapearMensaje(mensaje));
         }
 
         return respuestas;
@@ -619,8 +851,40 @@ public class ChatService {
         dto.setEmisorId(mensaje.getEmisor().getId());
         dto.setEmisorNombre(mensaje.getEmisor().getNombre());
         dto.setEmisorApellido(mensaje.getEmisor().getApellido());
+        dto.setChatId(mensaje.getChat().getId());
+
+        // Nombre del chat: para grupos usar el nombre del grupo, para directos usar el nombre del emisor
+        Chat chatMensaje = mensaje.getChat();
+        if (chatMensaje.getTipo() == TipoChat.GRUPAL) {
+            dto.setChatNombre(chatMensaje.getNombre());
+        } else {
+            dto.setChatNombre(mensaje.getEmisor().getNombre() + " " + mensaje.getEmisor().getApellido());
+        }
+
         if (mensaje.getParentMessage() != null) {
             dto.setParentId(mensaje.getParentMessage().getId());
+            if (mensaje.getParentMessage().getTipo() == TipoMensaje.IMAGEN || mensaje.getParentMessage().getTipo() == TipoMensaje.ARCHIVO) {
+                AdjuntoMeta parentMeta = parseAdjuntoMeta(mensaje.getParentMessage().getContenido());
+                dto.setParentContenido(parentMeta != null && parentMeta.originalName != null ? parentMeta.originalName : "Adjunto");
+            } else {
+                dto.setParentContenido(mensaje.getParentMessage().getContenido());
+            }
+            String parentNombre = mensaje.getParentMessage().getEmisor().getNombre()
+                + " " + mensaje.getParentMessage().getEmisor().getApellido();
+            dto.setParentEmisorNombre(parentNombre.trim());
+        }
+
+        if (mensaje.getTipo() == TipoMensaje.IMAGEN || mensaje.getTipo() == TipoMensaje.ARCHIVO || mensaje.getTipo() == TipoMensaje.VIDEO) {
+            AdjuntoMeta meta = parseAdjuntoMeta(mensaje.getContenido());
+            if (meta != null) {
+                dto.setAdjuntoNombre(meta.originalName);
+                dto.setAdjuntoMime(meta.mimeType);
+                dto.setAdjuntoTamano(meta.size);
+                dto.setAdjuntoUrl("/appchat/api/chats/adjuntos/" + mensaje.getId());
+                if (meta.originalName != null && !meta.originalName.isBlank()) {
+                    dto.setContenido(meta.originalName);
+                }
+            }
         }
 
         // cargar reacciones
@@ -698,21 +962,24 @@ public class ChatService {
         return;
     }
 
+    // Las reacciones no necesitan chatId (lo obtiene del mensaje)
+    if (dto.getAccion() != null && "REACCION".equalsIgnoreCase(dto.getAccion())) {
+        if (dto.getMensajeId() == null) {
+            throw new BadRequestException("mensajeId requerido para reacción");
+        }
+        if (dto.getContenido() == null || dto.getContenido().isBlank()) {
+            throw new BadRequestException("contenido requerido para reacción");
+        }
+        agregarReaccion(userId, dto.getMensajeId(), dto.getContenido());
+        return;
+    }
+
     if (dto.getChatId() == null) {
         throw new BadRequestException("chatId requerido");
     }
 
     if (dto.getContenido() == null || dto.getContenido().isBlank()) {
         throw new BadRequestException("contenido requerido");
-    }
-
-    // If action is reaction
-    if (dto.getAccion() != null && "REACCION".equalsIgnoreCase(dto.getAccion())) {
-        if (dto.getMensajeId() == null) {
-            throw new BadRequestException("mensajeId requerido para reacción");
-        }
-        agregarReaccion(userId, dto.getMensajeId(), dto.getContenido());
-        return;
     }
 
     enviarMensaje(

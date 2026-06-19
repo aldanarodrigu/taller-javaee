@@ -3,7 +3,6 @@ package com.appchat.dto;
 import com.appchat.model.enums.EstadoMensaje;
 import com.appchat.model.enums.TipoMensaje;
 import java.time.LocalDateTime;
-import java.util.Date;
 import java.util.List;
 
 public class MensajeDTO {
@@ -17,6 +16,14 @@ public class MensajeDTO {
     private String emisorNombre;
     private String emisorApellido;
     private Long parentId;
+    private String parentContenido;
+    private String parentEmisorNombre;
+    private Long chatId;
+    private String chatNombre;
+    private String adjuntoNombre;
+    private String adjuntoMime;
+    private Long adjuntoTamano;
+    private String adjuntoUrl;
     private List<ReaccionDTO> reacciones;
 
     public Long getId() {
@@ -89,6 +96,70 @@ public class MensajeDTO {
 
     public void setParentId(Long parentId) {
         this.parentId = parentId;
+    }
+
+    public String getParentContenido() {
+        return parentContenido;
+    }
+
+    public void setParentContenido(String parentContenido) {
+        this.parentContenido = parentContenido;
+    }
+
+    public String getParentEmisorNombre() {
+        return parentEmisorNombre;
+    }
+
+    public void setParentEmisorNombre(String parentEmisorNombre) {
+        this.parentEmisorNombre = parentEmisorNombre;
+    }
+
+    public Long getChatId() {
+        return chatId;
+    }
+
+    public void setChatId(Long chatId) {
+        this.chatId = chatId;
+    }
+
+    public String getChatNombre() {
+        return chatNombre;
+    }
+
+    public void setChatNombre(String chatNombre) {
+        this.chatNombre = chatNombre;
+    }
+
+    public String getAdjuntoNombre() {
+        return adjuntoNombre;
+    }
+
+    public void setAdjuntoNombre(String adjuntoNombre) {
+        this.adjuntoNombre = adjuntoNombre;
+    }
+
+    public String getAdjuntoMime() {
+        return adjuntoMime;
+    }
+
+    public void setAdjuntoMime(String adjuntoMime) {
+        this.adjuntoMime = adjuntoMime;
+    }
+
+    public Long getAdjuntoTamano() {
+        return adjuntoTamano;
+    }
+
+    public void setAdjuntoTamano(Long adjuntoTamano) {
+        this.adjuntoTamano = adjuntoTamano;
+    }
+
+    public String getAdjuntoUrl() {
+        return adjuntoUrl;
+    }
+
+    public void setAdjuntoUrl(String adjuntoUrl) {
+        this.adjuntoUrl = adjuntoUrl;
     }
 
     public List<ReaccionDTO> getReacciones() {

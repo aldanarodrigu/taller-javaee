@@ -5,12 +5,14 @@ import com.appchat.dto.ChatGrupoRequestDTO;
 import com.appchat.dto.ChatMiembrosRequestDTO;
 import com.appchat.dto.ChatRolGrupoRequestDTO;
 import com.appchat.dto.ChatResumenDTO;
+import com.appchat.dto.MensajeDTO;
 import com.appchat.dto.MensajeFijadoDTO;
 import com.appchat.service.ChatService;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DELETE;
+import jakarta.ws.rs.GET;
 import jakarta.ws.rs.PUT;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.GET;
@@ -81,6 +83,48 @@ public class ChatGrupoController {
         service.eliminarMiembroDeGrupo(chatId, usuarioId, userId);
 
         return Response.noContent().build();
+    }
+
+    @DELETE
+    @Path("/{id}")
+    public Response eliminarGrupo(@PathParam("id") Long chatId) {
+        Long usuarioId = getUsuarioId();
+
+        service.eliminarGrupo(chatId, usuarioId);
+
+        return Response.noContent().build();
+    }
+
+    @POST
+    @Path("/{id}/mensajes/{mensajeId}/pin")
+    @Consumes(MediaType.WILDCARD)
+    public Response fijarMensaje(@PathParam("id") Long chatId, @PathParam("mensajeId") Long mensajeId) {
+        Long usuarioId = getUsuarioId();
+
+        service.fijarMensaje(chatId, mensajeId, usuarioId);
+
+        return Response.noContent().build();
+    }
+
+    @DELETE
+    @Path("/{id}/mensajes/{mensajeId}/pin")
+    @Consumes(MediaType.WILDCARD)
+    public Response desfijarMensaje(@PathParam("id") Long chatId, @PathParam("mensajeId") Long mensajeId) {
+        Long usuarioId = getUsuarioId();
+
+        service.desfijarMensaje(chatId, mensajeId, usuarioId);
+
+        return Response.noContent().build();
+    }
+
+    @GET
+    @Path("/{id}/mensajes/pin")
+    public Response obtenerMensajesFijados(@PathParam("id") Long chatId) {
+        Long usuarioId = getUsuarioId();
+
+        List<MensajeDTO> mensajes = service.obtenerMensajesFijados(chatId, usuarioId);
+
+        return Response.ok(mensajes).build();
     }
 
     private Long getUsuarioId() {

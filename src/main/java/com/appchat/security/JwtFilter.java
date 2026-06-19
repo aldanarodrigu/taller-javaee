@@ -6,6 +6,7 @@ import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.container.ContainerRequestFilter;
 import jakarta.ws.rs.ext.Provider;
 import jakarta.ws.rs.core.Response;
+import java.util.List;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
@@ -29,16 +30,21 @@ public class JwtFilter implements ContainerRequestFilter {
             return;
         }
 
+        String token = null;
         String authHeader = requestContext.getHeaderString("Authorization");
-
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            requestContext.abortWith(Response.status(401)
-                    .entity("Falta token")
-                    .build());
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            token = authHeader.substring("Bearer ".length());
+        }
+        if (token == null || token.isBlank()) {
+            List<String> queryTokens = requestContext.getUriInfo().getQueryParameters().get("token");
+            if (queryTokens != null && !queryTokens.isEmpty()) {
+                token = queryTokens.get(0);
+            }
+        }
+        if (token == null || token.isBlank()) {
+            requestContext.abortWith(buildUnauthorized("Falta token"));
             return;
         }
-
-        String token = authHeader.substring("Bearer ".length());
 
         try {
             Claims claims = Jwts.parserBuilder()
@@ -52,9 +58,7 @@ public class JwtFilter implements ContainerRequestFilter {
             requestContext.setProperty("email", email);
             
             if (userId == null) {
-                requestContext.abortWith(Response.status(401)
-                        .entity("Token inválido (sin userId)")
-                        .build());
+                requestContext.abortWith(buildUnauthorized("Token inválido (sin userId)"));
                 return;
             }
 
@@ -62,9 +66,16 @@ public class JwtFilter implements ContainerRequestFilter {
 
 
         } catch (Exception e) {
-            requestContext.abortWith(Response.status(401)
-                    .entity("Token inválido")
-                    .build());
+            requestContext.abortWith(buildUnauthorized("Token inválido"));
         }
+    }
+
+    private Response buildUnauthorized(String message) {
+        return Response.status(401)
+                .entity(message)
+                .header("Access-Control-Allow-Origin", "*")
+                .header("Access-Control-Allow-Headers", "origin, content-type, accept, authorization")
+                .header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, HEAD")
+                .build();
     }
 }
