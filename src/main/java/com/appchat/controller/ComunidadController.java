@@ -22,7 +22,6 @@ import java.util.List;
 import com.appchat.dto.ComunidadResumenDTO;
 import jakarta.ws.rs.DELETE;
 import jakarta.ws.rs.PUT;
-import java.util.Map;
 
 @Path("/comunidades")
 @Produces(MediaType.APPLICATION_JSON) 
@@ -119,54 +118,6 @@ public Response listarInvitacionesPendientes() {
     Long userId = (Long) requestContext.getProperty("userId");
     return Response.ok(comunidadService.listarInvitacionesPendientes(userId)).build();
 }
-
-    @GET
-    @Path("/invitaciones/pendientes")
-    public Response listarInvitacionesPendientes() {
-        Long userId = (Long) requestContext.getProperty("userId");
-        List<Map<String, Object>> invitaciones = comunidadService.listarInvitacionesPendientes(userId);
-        return Response.ok(invitaciones).build();
-    }
-
-    @PUT
-    @Path("/invitaciones/{id}/aceptar")
-    public Response aceptarInvitacion(@PathParam("id") Long invitacionId) {
-        Long userId = (Long) requestContext.getProperty("userId");
-        comunidadService.aceptarInvitacion(invitacionId, userId);
-        return Response.noContent().build();
-    }
-
-    @PUT
-    @Path("/invitaciones/{id}/rechazar")
-    public Response rechazarInvitacion(@PathParam("id") Long invitacionId) {
-        Long userId = (Long) requestContext.getProperty("userId");
-        comunidadService.rechazarInvitacion(invitacionId, userId);
-        return Response.noContent().build();
-    }
-
-    @DELETE
-    @Path("/{id}/salir")
-    public Response salirComunidad(@PathParam("id") Long comunidadId) {
-        Long userId = (Long) requestContext.getProperty("userId");
-        comunidadService.salirComunidad(comunidadId, userId);
-        return Response.noContent().build();
-    }
-
-    @DELETE
-    @Path("/{id}/mimebros/{userId}")
-    public Response eliminarMiembroCompat(@PathParam("id") Long comunidadId, @PathParam("userId") Long userIdObjetivo) {
-        Long userIdSolicitante = (Long) requestContext.getProperty("userId");
-        comunidadService.eliminarMiembroComunidad(comunidadId, userIdObjetivo, userIdSolicitante);
-        return Response.noContent().build();
-    }
-
-    @DELETE
-    @Path("/{id}/miembros/{userId}")
-    public Response eliminarMiembro(@PathParam("id") Long comunidadId, @PathParam("userId") Long userIdObjetivo) {
-        Long userIdSolicitante = (Long) requestContext.getProperty("userId");
-        comunidadService.eliminarMiembroComunidad(comunidadId, userIdObjetivo, userIdSolicitante);
-        return Response.noContent().build();
-    }
     
     @PUT
     @Path("/invitaciones/{invitacionId}/aceptar")
