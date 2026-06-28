@@ -95,38 +95,6 @@ public class ChatGrupoController {
         return Response.noContent().build();
     }
 
-    @POST
-    @Path("/{id}/mensajes/{mensajeId}/pin")
-    @Consumes(MediaType.WILDCARD)
-    public Response fijarMensaje(@PathParam("id") Long chatId, @PathParam("mensajeId") Long mensajeId) {
-        Long usuarioId = getUsuarioId();
-
-        service.fijarMensaje(chatId, mensajeId, usuarioId);
-
-        return Response.noContent().build();
-    }
-
-    @DELETE
-    @Path("/{id}/mensajes/{mensajeId}/pin")
-    @Consumes(MediaType.WILDCARD)
-    public Response desfijarMensaje(@PathParam("id") Long chatId, @PathParam("mensajeId") Long mensajeId) {
-        Long usuarioId = getUsuarioId();
-
-        service.desfijarMensaje(chatId, mensajeId, usuarioId);
-
-        return Response.noContent().build();
-    }
-
-    @GET
-    @Path("/{id}/mensajes/pin")
-    public Response obtenerMensajesFijados(@PathParam("id") Long chatId) {
-        Long usuarioId = getUsuarioId();
-
-        List<MensajeDTO> mensajes = service.obtenerMensajesFijados(chatId, usuarioId);
-
-        return Response.ok(mensajes).build();
-    }
-
     private Long getUsuarioId() {
         Object userIdObj = requestContext.getProperty("userId");
 

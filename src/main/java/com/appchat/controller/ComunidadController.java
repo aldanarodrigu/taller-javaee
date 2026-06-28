@@ -103,23 +103,6 @@ public class ComunidadController {
         return Response.noContent().build();
     }
     
-    @DELETE
-    @Path("/{id}/mimebros/{idm}")
-    public Response eliminarMiembro(@PathParam("id") Long comunidadId, @PathParam("idm") Long userId){
-        
-        Long adminId = (Long) requestContext.getProperty("userId");
-        
-        comunidadService.eliminarMiembro(comunidadId, userId, adminId);   
-        
-        return Response.noContent().build();
-    }
-    @GET
-@Path("/invitaciones/pendientes")
-public Response listarInvitacionesPendientes() {
-    Long userId = (Long) requestContext.getProperty("userId");
-    return Response.ok(comunidadService.listarInvitacionesPendientes(userId)).build();
-}
-
     @GET
     @Path("/invitaciones/pendientes")
     public Response listarInvitacionesPendientes() {
@@ -153,18 +136,10 @@ public Response listarInvitacionesPendientes() {
     }
 
     @DELETE
-    @Path("/{id}/mimebros/{userId}")
-    public Response eliminarMiembroCompat(@PathParam("id") Long comunidadId, @PathParam("userId") Long userIdObjetivo) {
-        Long userIdSolicitante = (Long) requestContext.getProperty("userId");
-        comunidadService.eliminarMiembroComunidad(comunidadId, userIdObjetivo, userIdSolicitante);
-        return Response.noContent().build();
-    }
-
-    @DELETE
     @Path("/{id}/miembros/{userId}")
     public Response eliminarMiembro(@PathParam("id") Long comunidadId, @PathParam("userId") Long userIdObjetivo) {
         Long userIdSolicitante = (Long) requestContext.getProperty("userId");
-        comunidadService.eliminarMiembroComunidad(comunidadId, userIdObjetivo, userIdSolicitante);
+        comunidadService.eliminarMiembro(comunidadId, userIdObjetivo, userIdSolicitante);
         return Response.noContent().build();
     }
     

@@ -140,6 +140,54 @@ public class ChatService {
         }
     }
 
+    public static class AdjuntoMeta {
+        public String storageName;
+        public String originalName;
+        public String mimeType;
+        public long size;
+    }
+
+    private String normalizarMime(String mimeType) {
+        if (mimeType == null || mimeType.isBlank()) {
+            return MediaType.APPLICATION_OCTET_STREAM;
+        }
+        return mimeType.trim().toLowerCase();
+    }
+
+    private byte[] decodeBase64(String base64) {
+        if (base64 == null || base64.isBlank()) {
+            return new byte[0];
+        }
+        String data = base64.contains(",") ? base64.substring(base64.indexOf(',') + 1) : base64;
+        try {
+            return Base64.getDecoder().decode(data.trim());
+        } catch (IllegalArgumentException e) {
+            throw new BadRequestException("contenidoBase64 no es Base64 válido");
+        }
+    }
+
+    private String sanitizeFileName(String name) {
+        if (name == null || name.isBlank()) {
+            return "adjunto";
+        }
+        return name.replaceAll("[^a-zA-Z0-9._\\-]", "_");
+    }
+
+    private String obtenerExtension(String name) {
+        if (name == null) return "";
+        int dot = name.lastIndexOf('.');
+        return dot >= 0 ? name.substring(dot) : "";
+    }
+
+    private AdjuntoMeta parseAdjuntoMeta(String json) {
+        if (json == null || json.isBlank()) return null;
+        try {
+            return mapper.readValue(json, AdjuntoMeta.class);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     @Transactional
     public MensajeDTO enviarAdjunto(Long chatId, Long emisorId, AdjuntoUploadRequestDTO request) {
         if (request == null) {
@@ -655,42 +703,6 @@ public class ChatService {
         validarAdminGrupo(chat, usuarioSolicitanteId);
 
         chatRepository.eliminarChat(chat);
-        chatRepository.flush();
-    }
-
-    @Transactional
-    public void fijarMensaje(Long chatId, Long mensajeId, Long usuarioId) {
-        Chat chat = chatRepository.buscarChatPorId(chatId);
-        if (chat == null) {
-            throw new NotFoundException("Chat no existe.");
-        }
-
-        validarParticipacion(chat, usuarioId);
-
-        Mensaje mensaje = chatRepository.buscarMensajePorId(mensajeId);
-        if (mensaje == null || !mensaje.getChat().getId().equals(chatId)) {
-            throw new NotFoundException("Mensaje no existe en el chat");
-        }
-
-        chatRepository.fijarMensaje(chatId, mensajeId, usuarioId);
-        chatRepository.flush();
-    }
-
-    @Transactional
-    public void desfijarMensaje(Long chatId, Long mensajeId, Long usuarioId) {
-        Chat chat = chatRepository.buscarChatPorId(chatId);
-        if (chat == null) {
-            throw new NotFoundException("Chat no existe.");
-        }
-
-        validarParticipacion(chat, usuarioId);
-
-        Mensaje mensaje = chatRepository.buscarMensajePorId(mensajeId);
-        if (mensaje == null || !mensaje.getChat().getId().equals(chatId)) {
-            throw new NotFoundException("Mensaje no existe en el chat");
-        }
-
-        chatRepository.desfijarMensaje(chatId, mensajeId);
         chatRepository.flush();
     }
 
