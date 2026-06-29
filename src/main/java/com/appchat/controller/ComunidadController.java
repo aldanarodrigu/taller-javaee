@@ -93,16 +93,6 @@ public class ComunidadController {
         return Response.ok(comunidades).build();
     }
     
-    @DELETE
-    @Path("/{id}/salir")
-    public Response salirDeComunidad(@PathParam("id") Long comunidadId){
-        Long userId = (Long) requestContext.getProperty("userId");
-        
-        comunidadService.salirComunidad(comunidadId, userId);   
-        
-        return Response.noContent().build();
-    }
-    
     @GET
     @Path("/invitaciones/pendientes")
     public Response listarInvitacionesPendientes() {
@@ -141,22 +131,6 @@ public class ComunidadController {
         Long userIdSolicitante = (Long) requestContext.getProperty("userId");
         comunidadService.eliminarMiembro(comunidadId, userIdObjetivo, userIdSolicitante);
         return Response.noContent().build();
-    }
-    
-    @PUT
-    @Path("/invitaciones/{invitacionId}/aceptar")
-    public Response aceptar(@PathParam("invitacionId") Long invitacionId, @Context ContainerRequestContext requestContext) {
-        Long userId = (Long) requestContext.getProperty("userId");
-        comunidadService.aceptarInvitacion(invitacionId, userId);
-        return Response.ok().build();
-    }
-
-    @PUT
-    @Path("/invitaciones/{invitacionId}/rechazar")
-    public Response rechazar(@PathParam("invitacionId") Long invitacionId, @Context ContainerRequestContext requestContext) {
-        Long userId = (Long) requestContext.getProperty("userId");
-        comunidadService.rechazarInvitacion(invitacionId, userId);
-        return Response.ok().build();
     }
     
 }

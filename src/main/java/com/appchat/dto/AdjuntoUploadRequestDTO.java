@@ -6,6 +6,9 @@ public class AdjuntoUploadRequestDTO {
     private String mimeType;
     private String contenidoBase64;
     private Long parentId;
+    /** URL pública en Supabase Storage (alternativa a contenidoBase64) */
+    private String fileUrl;
+    private Long size;
 
     public String getNombre() {
         return nombre;
@@ -37,5 +40,21 @@ public class AdjuntoUploadRequestDTO {
 
     public void setParentId(Long parentId) {
         this.parentId = parentId;
+    }
+
+    public String getFileUrl() {
+        return fileUrl;
+    }
+
+    public void setFileUrl(String fileUrl) {
+        this.fileUrl = fileUrl;
+    }
+
+    public Long getSize() {
+        return size;
+    }
+
+    public void setSize(Long size) {
+        this.size = size;
     }
 }

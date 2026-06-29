@@ -35,6 +35,9 @@ public class Usuario {
     @Column(name = "foto_perfil")
     private String fotoPerfil;
 
+    @Column(name = "public_key", columnDefinition = "TEXT")
+    private String publicKey;
+
     @OneToMany(mappedBy = "usuario", fetch = FetchType.LAZY)
     private List<Participa> participaciones = new ArrayList<>(); //estas son las participaciones de chat tanto grupales como directos
     
@@ -119,6 +122,14 @@ public class Usuario {
 
     public void setFotoPerfil(String fotoPerfil) {
         this.fotoPerfil = fotoPerfil;
+    }
+
+    public String getPublicKey() {
+        return publicKey;
+    }
+
+    public void setPublicKey(String publicKey) {
+        this.publicKey = publicKey;
     }
 
 }

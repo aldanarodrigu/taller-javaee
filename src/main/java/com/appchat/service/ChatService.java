@@ -145,6 +145,7 @@ public class ChatService {
         public String originalName;
         public String mimeType;
         public long size;
+        public String fileUrl;
     }
 
     private String normalizarMime(String mimeType) {
@@ -196,29 +197,23 @@ public class ChatService {
         if (request.getNombre() == null || request.getNombre().isBlank()) {
             throw new BadRequestException("nombre requerido");
         }
-        if (request.getContenidoBase64() == null || request.getContenidoBase64().isBlank()) {
-            throw new BadRequestException("contenidoBase64 requerido");
+
+        boolean usaUrl = request.getFileUrl() != null && !request.getFileUrl().isBlank();
+        boolean usaBase64 = request.getContenidoBase64() != null && !request.getContenidoBase64().isBlank();
+
+        if (!usaUrl && !usaBase64) {
+            throw new BadRequestException("Se requiere fileUrl o contenidoBase64");
         }
 
         String mimeType = normalizarMime(request.getMimeType());
-        byte[] bytes = decodeBase64(request.getContenidoBase64());
-        if (bytes.length == 0) {
-            throw new BadRequestException("Adjunto vacío");
-        }
-        if (bytes.length > MAX_ADJUNTO_BYTES) {
-            throw new BadRequestException("Adjunto excede 10MB");
-        }
+        String nombreOriginal = sanitizeFileName(request.getNombre());
 
         Chat chat = chatRepository.buscarChatPorId(chatId);
-        if (chat == null) {
-            throw new NotFoundException("Chat no existe.");
-        }
+        if (chat == null) throw new NotFoundException("Chat no existe.");
         validarParticipacion(chat, emisorId);
 
         Usuario emisor = usuarioRepository.buscarPorId(emisorId);
-        if (emisor == null) {
-            throw new NotFoundException("Usuario no existe.");
-        }
+        if (emisor == null) throw new NotFoundException("Usuario no existe.");
 
         Mensaje mensaje = new Mensaje();
         mensaje.setChat(chat);
@@ -227,51 +222,59 @@ public class ChatService {
 
         if (request.getParentId() != null) {
             Mensaje parent = chatRepository.buscarMensajePorId(request.getParentId());
-            if (parent == null) {
-                throw new NotFoundException("Mensaje padre no encontrado");
-            }
-            if (!parent.getChat().getId().equals(chatId)) {
+            if (parent == null) throw new NotFoundException("Mensaje padre no encontrado");
+            if (!parent.getChat().getId().equals(chatId))
                 throw new BadRequestException("parentId no pertenece al mismo chat");
-            }
             mensaje.setParentMessage(parent);
         }
 
         TipoMensaje tipoAdjunto;
-        if (mimeType.startsWith("image/")) {
-            tipoAdjunto = TipoMensaje.IMAGEN;
-        } else if (mimeType.startsWith("video/")) {
-            tipoAdjunto = TipoMensaje.VIDEO;
-        } else {
-            tipoAdjunto = TipoMensaje.ARCHIVO;
-        }
+        if (mimeType.startsWith("image/")) tipoAdjunto = TipoMensaje.IMAGEN;
+        else if (mimeType.startsWith("video/")) tipoAdjunto = TipoMensaje.VIDEO;
+        else tipoAdjunto = TipoMensaje.ARCHIVO;
         mensaje.setTipo(tipoAdjunto);
 
-        String nombreOriginal = sanitizeFileName(request.getNombre());
-        String extension = obtenerExtension(nombreOriginal);
-        String storageName = UUID.randomUUID() + extension;
-        Path ruta = ADJUNTOS_DIR.resolve(storageName).normalize();
-
-        try {
-            Files.createDirectories(ADJUNTOS_DIR);
-            Files.write(ruta, bytes);
-        } catch (Exception e) {
-            throw new WebApplicationException("No se pudo guardar adjunto", Response.Status.INTERNAL_SERVER_ERROR);
-        }
-
-        try {
-            String jsonMeta = mapper.writeValueAsString(Map.of(
-                    "storageName", storageName,
-                    "originalName", nombreOriginal,
-                    "mimeType", mimeType,
-                    "size", bytes.length
-            ));
-            mensaje.setContenido(jsonMeta);
-        } catch (Exception e) {
+        if (usaUrl) {
+            // Ruta Supabase Storage: guardar URL directamente
+            long size = request.getSize() != null ? request.getSize() : 0L;
             try {
-                Files.deleteIfExists(ruta);
-            } catch (Exception ignored) {
+                String jsonMeta = mapper.writeValueAsString(Map.of(
+                        "fileUrl", request.getFileUrl(),
+                        "originalName", nombreOriginal,
+                        "mimeType", mimeType,
+                        "size", size
+                ));
+                mensaje.setContenido(jsonMeta);
+            } catch (Exception e) {
+                throw new WebApplicationException("No se pudo serializar metadata", Response.Status.INTERNAL_SERVER_ERROR);
             }
-            throw new WebApplicationException("No se pudo serializar metadata de adjunto", Response.Status.INTERNAL_SERVER_ERROR);
+        } else {
+            // Ruta legado: base64 → disco
+            byte[] bytes = decodeBase64(request.getContenidoBase64());
+            if (bytes.length == 0) throw new BadRequestException("Adjunto vacío");
+            if (bytes.length > MAX_ADJUNTO_BYTES) throw new BadRequestException("Adjunto excede 10MB");
+
+            String extension = obtenerExtension(nombreOriginal);
+            String storageName = UUID.randomUUID() + extension;
+            Path ruta = ADJUNTOS_DIR.resolve(storageName).normalize();
+            try {
+                Files.createDirectories(ADJUNTOS_DIR);
+                Files.write(ruta, bytes);
+            } catch (Exception e) {
+                throw new WebApplicationException("No se pudo guardar adjunto", Response.Status.INTERNAL_SERVER_ERROR);
+            }
+            try {
+                String jsonMeta = mapper.writeValueAsString(Map.of(
+                        "storageName", storageName,
+                        "originalName", nombreOriginal,
+                        "mimeType", mimeType,
+                        "size", bytes.length
+                ));
+                mensaje.setContenido(jsonMeta);
+            } catch (Exception e) {
+                try { Files.deleteIfExists(ruta); } catch (Exception ignored) { }
+                throw new WebApplicationException("No se pudo serializar metadata", Response.Status.INTERNAL_SERVER_ERROR);
+            }
         }
 
         chatRepository.guardarMensaje(mensaje);
@@ -811,6 +814,7 @@ public class ChatService {
 
             if (otro != null) {
                 dto.setNombre(otro.getNombre() + " " + otro.getApellido());
+                dto.setUsuarioInterlocutorId(otro.getId());
             }
 
             dto.setTipo("DIRECTO");
@@ -835,7 +839,17 @@ public class ChatService {
                 dto.setUltimoMensajeContenido(ultimo.getContenido());
             }
             dto.setUltimoMensajeFecha(ultimo.getFechaEnvio());
+            if (ultimo.getEmisor() != null) {
+                dto.setUltimoMensajeEmisorId(ultimo.getEmisor().getId());
+                dto.setUltimoMensajeEmisorPublicKey(ultimo.getEmisor().getPublicKey());
+            }
         }
+
+        // participantIds para E2E
+        List<Long> pids = chat.getParticipantes().stream()
+                .map(u -> u.getId())
+                .collect(java.util.stream.Collectors.toList());
+        dto.setParticipantIds(pids);
 
     return dto;
 }
@@ -892,7 +906,12 @@ public class ChatService {
                 dto.setAdjuntoNombre(meta.originalName);
                 dto.setAdjuntoMime(meta.mimeType);
                 dto.setAdjuntoTamano(meta.size);
-                dto.setAdjuntoUrl("/appchat/api/chats/adjuntos/" + mensaje.getId());
+                // Si el adjunto está en Supabase Storage, usar la URL directa
+                if (meta.fileUrl != null && !meta.fileUrl.isBlank()) {
+                    dto.setAdjuntoUrl(meta.fileUrl);
+                } else {
+                    dto.setAdjuntoUrl("/appchat/api/chats/adjuntos/" + mensaje.getId());
+                }
                 if (meta.originalName != null && !meta.originalName.isBlank()) {
                     dto.setContenido(meta.originalName);
                 }

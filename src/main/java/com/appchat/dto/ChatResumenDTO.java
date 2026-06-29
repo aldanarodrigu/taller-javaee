@@ -15,6 +15,10 @@ public class ChatResumenDTO {
     
     private Long usuarioInterlocutorId; // solo para DIRECTO
 
+    private java.util.List<Long> participantIds;
+    private Long ultimoMensajeEmisorId;
+    private String ultimoMensajeEmisorPublicKey;
+
     public Long getId() {
         return id;
     }
@@ -85,6 +89,30 @@ public class ChatResumenDTO {
 
     public void setUsuarioInterlocutorId(Long usuarioInterlocutorId) {
         this.usuarioInterlocutorId = usuarioInterlocutorId;
+    }
+
+    public java.util.List<Long> getParticipantIds() {
+        return participantIds;
+    }
+
+    public void setParticipantIds(java.util.List<Long> participantIds) {
+        this.participantIds = participantIds;
+    }
+
+    public Long getUltimoMensajeEmisorId() {
+        return ultimoMensajeEmisorId;
+    }
+
+    public void setUltimoMensajeEmisorId(Long ultimoMensajeEmisorId) {
+        this.ultimoMensajeEmisorId = ultimoMensajeEmisorId;
+    }
+
+    public String getUltimoMensajeEmisorPublicKey() {
+        return ultimoMensajeEmisorPublicKey;
+    }
+
+    public void setUltimoMensajeEmisorPublicKey(String ultimoMensajeEmisorPublicKey) {
+        this.ultimoMensajeEmisorPublicKey = ultimoMensajeEmisorPublicKey;
     }
 
     

@@ -92,6 +92,7 @@ public void actualizarFoto(Long id, String url) {
         dto.setEstado(usuario.getEstado());
         dto.setUsername(usuario.getUsername());
         dto.setFotoPerfil(usuario.getFotoPerfil());
+        dto.setPublicKey(usuario.getPublicKey());
         return dto;
     }
 
@@ -161,6 +162,16 @@ public void actualizarFoto(Long id, String url) {
         repository.actualizar(usuario);
 
         return mapearUsuario(usuario);
+    }
+
+    @Transactional
+    public void guardarPublicKey(Long userId, String publicKey) {
+        Usuario usuario = repository.buscarPorId(userId);
+        if (usuario == null) {
+            throw new jakarta.ws.rs.NotFoundException("Usuario no encontrado");
+        }
+        usuario.setPublicKey(publicKey);
+        repository.actualizar(usuario);
     }
 
 }

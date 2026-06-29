@@ -68,5 +68,15 @@ public String getFotoPerfil() {
 public void setFotoPerfil(String fotoPerfil) {
     this.fotoPerfil = fotoPerfil;
 }
+
+    private String publicKey;
+
+    public String getPublicKey() {
+        return publicKey;
+    }
+
+    public void setPublicKey(String publicKey) {
+        this.publicKey = publicKey;
+    }
     
 }

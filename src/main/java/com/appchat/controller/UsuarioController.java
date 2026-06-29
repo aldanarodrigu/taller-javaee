@@ -63,6 +63,18 @@ public class UsuarioController {
     }
 
     @PUT
+    @Path("/{id}/publicKey")
+    @Consumes(MediaType.TEXT_PLAIN)
+    public Response guardarPublicKey(@PathParam("id") Long id, String publicKey) {
+        Long userIdAutenticado = (Long) requestContext.getProperty("userId");
+        if (!id.equals(userIdAutenticado)) {
+            return Response.status(Response.Status.FORBIDDEN).build();
+        }
+        service.guardarPublicKey(id, publicKey);
+        return Response.noContent().build();
+    }
+
+    @PUT
     @Path("/{id}/estado")
     public Response actualizarEstado(@PathParam("id") Long id, @Valid ActualizarEstadoDTO dto) {
         
