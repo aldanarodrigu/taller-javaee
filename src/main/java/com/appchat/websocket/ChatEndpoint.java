@@ -26,6 +26,12 @@ public class ChatEndpoint {
     public static class Config extends ServerEndpointConfig.Configurator {
 
         @Override
+        public boolean checkOrigin(String originHeaderValue) {
+            // Permitir conexiones desde cualquier origen (incluyendo ngrok)
+            return true;
+        }
+
+        @Override
         public void modifyHandshake(ServerEndpointConfig config, HandshakeRequest request, HandshakeResponse response) {
             try {
                 String query = request.getQueryString();
