@@ -8,9 +8,6 @@ import com.appchat.model.enums.RolComunidad;
 import com.appchat.repository.ComunidadRepository;
 import com.appchat.dto.ComunidadResumenDTO;
 import com.appchat.dto.ComunidadDetalleDTO;
-import com.appchat.dto.InvitacionDTO;
-
-
 import com.appchat.model.InvitacionComunidad;
 import com.appchat.model.MiembroComunidad;
 import com.appchat.model.enums.EstadoInvitacion;
@@ -29,8 +26,8 @@ import jakarta.ws.rs.core.Response;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.HashMap;
-import com.appchat.model.InvitacionComunidad;
+
+
 
 @ApplicationScoped
 public class ComunidadService {
@@ -282,21 +279,21 @@ public class ComunidadService {
         
         invitacionRepository.actualizar(inv);
     }
-    
-    public List<Map<String, Object>> listarInvitacionesPendientes(Long userId) {
-    List<InvitacionComunidad> invitaciones = invitacionRepository.listarPendientesPorUsuario(userId);
-    List<Map<String, Object>> result = new java.util.ArrayList<>();
-    for (InvitacionComunidad inv : invitaciones) {
-        Map<String, Object> m = new java.util.HashMap<>();
-        m.put("id", inv.getId());
-        m.put("comunidadId", inv.getComunidad().getId());
-        m.put("comunidadNombre", inv.getComunidad().getNombre());
-        m.put("invitadoPor", inv.getOwner().getNombre() + " " + inv.getOwner().getApellido());
-        result.add(m);
-    }
-    return result;
-}
 
-    
+    public List<Map<String, Object>> listarInvitacionesPendientes(Long userId) {
+        List<InvitacionComunidad> invitaciones = invitacionRepository.listarPendientesPorUsuario(userId);
+        List<Map<String, Object>> result = new java.util.ArrayList<>();
+
+        for (InvitacionComunidad inv : invitaciones) {
+            Map<String, Object> m = new java.util.HashMap<>();
+            m.put("id", inv.getId());
+            m.put("comunidadId", inv.getComunidad().getId());
+            m.put("comunidadNombre", inv.getComunidad().getNombre());
+            m.put("invitadoPor", inv.getOwner().getNombre() + " " + inv.getOwner().getApellido());
+            result.add(m);
+        }
+
+        return result;
+    }
 }
 

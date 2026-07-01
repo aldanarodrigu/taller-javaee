@@ -1,7 +1,6 @@
 package com.appchat.websocket;
 
 import jakarta.enterprise.context.ApplicationScoped;
-import jakarta.transaction.Transactional;
 import jakarta.websocket.Session;
 import java.util.Map;
 import java.util.Set;
@@ -30,7 +29,6 @@ public class ChatHub {
         }
     }
 
-    @Transactional(Transactional.TxType.NOT_SUPPORTED)
     public void enviarAUsuario(Long userId, String mensaje) {
         Set<Session> sessions = sesiones.get(userId);
         
@@ -38,16 +36,18 @@ public class ChatHub {
             return;
 
         for (Session s : Set.copyOf(sessions)) {
-            if (!s.isOpen()) {
-                remover(userId, s);
+            
+            if(!s.isOpen()){ //para evitar acumular sesiones muertas
+                remover(userId,s);
                 continue;
             }
-            try {
-                s.getBasicRemote().sendText(mensaje);
-            } catch (Exception e) {
-                log.log(Level.WARNING, "Fallo al enviar a usuario " + userId, e);
-                remover(userId, s);
-            }
+            
+            s.getAsyncRemote().sendText(mensaje, result -> {
+                if (!result.isOK()){
+                    log.log(Level.WARNING, "Fallo al enviar a usuario " + userId, result.getException());
+                    remover(userId, s);
+                }
+            });
         }
     }
 

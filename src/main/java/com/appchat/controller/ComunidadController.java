@@ -92,7 +92,7 @@ public class ComunidadController {
         List<ComunidadResumenDTO> comunidades = comunidadService.listarComunidadesDelUsuario(userId);
         return Response.ok(comunidades).build();
     }
-    
+
     @GET
     @Path("/invitaciones/pendientes")
     public Response listarInvitacionesPendientes() {
@@ -132,5 +132,4 @@ public class ComunidadController {
         comunidadService.eliminarMiembro(comunidadId, userIdObjetivo, userIdSolicitante);
         return Response.noContent().build();
     }
-    
 }
