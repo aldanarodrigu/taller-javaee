@@ -37,6 +37,14 @@ import jakarta.ws.rs.NotFoundException;
 import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.Response;
 
+import com.appchat.dto.AdjuntoUploadRequestDTO;
+import jakarta.ws.rs.core.MediaType;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Base64;
+import java.util.Map;
+import java.util.UUID;
+
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;

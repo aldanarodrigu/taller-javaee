@@ -98,7 +98,7 @@ public class ChatRepository {
         em.createQuery("DELETE FROM Chat c WHERE c.id = :chatId")
                 .setParameter("chatId", chatId).executeUpdate();
     }
-    
+
     public void guardarMensaje(Mensaje mensaje) {
         em.persist(mensaje);
     }
