@@ -22,8 +22,39 @@ public class ComunidadRepository {
     }
     
     public void eliminar(Long id) {
-    Comunidad c = em.find(Comunidad.class, id);
-    if (c != null) em.remove(c);
+        // limpio el contexto asi el commit no cascadea sobre lo que borro a mano
+        em.clear();
+
+        // borro en orden para no romper las foreign keys: primero los chats de la
+        // comunidad con todo lo que cuelga, despues invitaciones y miembros
+        em.createQuery(
+                "DELETE FROM Reaccion r WHERE r.mensaje IN "
+                + "(SELECT m FROM Mensaje m WHERE m.chat.comunidad.id = :id)")
+                .setParameter("id", id).executeUpdate();
+
+        em.createQuery("DELETE FROM MensajeFijado mf WHERE mf.chat.comunidad.id = :id")
+                .setParameter("id", id).executeUpdate();
+
+        em.createQuery("UPDATE Mensaje m SET m.parentMessage = NULL WHERE m.chat.comunidad.id = :id")
+                .setParameter("id", id).executeUpdate();
+
+        em.createQuery("DELETE FROM Mensaje m WHERE m.chat.comunidad.id = :id")
+                .setParameter("id", id).executeUpdate();
+
+        em.createQuery("DELETE FROM Participa p WHERE p.chat.comunidad.id = :id")
+                .setParameter("id", id).executeUpdate();
+
+        em.createQuery("DELETE FROM Chat c WHERE c.comunidad.id = :id")
+                .setParameter("id", id).executeUpdate();
+
+        em.createQuery("DELETE FROM InvitacionComunidad i WHERE i.comunidad.id = :id")
+                .setParameter("id", id).executeUpdate();
+
+        em.createQuery("DELETE FROM MiembroComunidad mc WHERE mc.comunidad.id = :id")
+                .setParameter("id", id).executeUpdate();
+
+        em.createQuery("DELETE FROM Comunidad co WHERE co.id = :id")
+                .setParameter("id", id).executeUpdate();
     }
     
     public boolean sonMiembros(Long comunidadId, Long u1, Long u2) {
