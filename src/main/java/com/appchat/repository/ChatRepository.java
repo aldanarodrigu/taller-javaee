@@ -88,8 +88,30 @@ public class ChatRepository {
         if (chat == null) {
             return;
         }
-        Chat managed = em.contains(chat) ? chat : em.merge(chat);
-        em.remove(managed);
+        Long chatId = chat.getId();
+        em.detach(chat);
+
+        // borro en orden para no romper las foreign keys
+        em.createQuery(
+                "DELETE FROM Reaccion r WHERE r.mensaje IN "
+                + "(SELECT m FROM Mensaje m WHERE m.chat.id = :chatId)")
+                .setParameter("chatId", chatId).executeUpdate();
+
+        em.createQuery("DELETE FROM MensajeFijado mf WHERE mf.chat.id = :chatId")
+                .setParameter("chatId", chatId).executeUpdate();
+
+        // saco el parent asi puedo borrar los mensajes
+        em.createQuery("UPDATE Mensaje m SET m.parentMessage = NULL WHERE m.chat.id = :chatId")
+                .setParameter("chatId", chatId).executeUpdate();
+
+        em.createQuery("DELETE FROM Mensaje m WHERE m.chat.id = :chatId")
+                .setParameter("chatId", chatId).executeUpdate();
+
+        em.createQuery("DELETE FROM Participa p WHERE p.chat.id = :chatId")
+                .setParameter("chatId", chatId).executeUpdate();
+
+        em.createQuery("DELETE FROM Chat c WHERE c.id = :chatId")
+                .setParameter("chatId", chatId).executeUpdate();
     }
 
     public void guardarMensaje(Mensaje mensaje) {
