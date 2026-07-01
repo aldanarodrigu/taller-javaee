@@ -1240,7 +1240,9 @@ public class ChatService {
             dto.setChatId(mf.getChat().getId());
             dto.setMensajeId(mf.getMensaje().getId());
             dto.setContenido(mf.getMensaje().getContenido());
-            dto.setFijadoPorId(mf.getFijadoPor().getId());
+            if (mf.getFijadoPor() != null) {
+                dto.setFijadoPorId(mf.getFijadoPor().getId());
+            }
             dto.setFechaFijado(mf.getFechaFijado());
 
             return dto;
